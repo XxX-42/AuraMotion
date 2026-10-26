@@ -86,6 +86,7 @@ final class LocalizationTests: XCTestCase {
             "Reset Experiment Metrics", "Rest Deadzone (px)", "Right click", "Right click recognized",
             "Right half", "Right half recognized", "Right swipe recognized",
             "Run one sample per preset to compare baseline and optimized results.", "SCROLL PENDING", "SCROLLING",
+            "Reveal in Finder",
             "SWIPE LEFT ◀", "SWIPE RIGHT ▶", "Safety & Arbitration", "Save movement profile",
             "Saved to: {filename}", "Separate Drag Filter Tuning", "Settings...", "Show Click Feedback Ripples",
             "Show Floating HUD",

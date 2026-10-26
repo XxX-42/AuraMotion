@@ -157,6 +157,7 @@ public enum L10n {
         "Metrics reset.": "实验指标已重置。",
         "Metrics exported.": "实验指标已导出。",
         "Metrics export failed.": "实验指标导出失败。",
+        "Reveal in Finder": "在访达中显示",
         "Effective cursor strategy:": "当前光标策略：",
         "Effective vision provider:": "当前视觉后端：",
         "CAP": "采集",

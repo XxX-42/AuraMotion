@@ -9,6 +9,7 @@ struct CursorExperimentPanel: View {
     @State private var isRecordingSample = false
     @State private var isExportingMetrics = false
     @State private var metricsStatusKey: String?
+    @State private var lastExportURL: URL?
     @State private var recordingID = UUID()
     @State private var samplePurpose: CursorExperimentTaskPhase = .other
 
@@ -347,6 +348,14 @@ struct CursorExperimentPanel: View {
                         .foregroundStyle(metricsStatusKey == "Metrics export failed." ? Color.orange : Color.gray)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if let lastExportURL {
+                    Text(lastExportURL.path)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                    Button(L10n.tr("Reveal in Finder")) {
+                        NSWorkspace.shared.activateFileViewerSelecting([lastExportURL])
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -383,7 +392,7 @@ struct CursorExperimentPanel: View {
                 switch result {
                 case .success(let url):
                     metricsStatusKey = "Metrics exported."
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                    lastExportURL = url
                 case .failure:
                     metricsStatusKey = "Metrics export failed."
                 }
