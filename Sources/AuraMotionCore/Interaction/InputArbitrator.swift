@@ -17,6 +17,8 @@ public final class InputArbitrator: @unchecked Sendable {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var arbitrationState = AuraArbitrationState()
+    // Reuse the existing lock-free atomic primitive for the opt-in takeover policy.
+    private var motionPriorityState = AuraArbitrationState()
     private var isHardwareLockFree = false
 
     public weak var delegate: InputArbitratorDelegate?
@@ -39,6 +41,7 @@ public final class InputArbitrator: @unchecked Sendable {
 
     public init() {
         aura_atomic_init(&arbitrationState, true, 1)
+        aura_atomic_init(&motionPriorityState, false, 0)
         isHardwareLockFree = aura_atomic_is_hardware_lock_free(&arbitrationState)
     }
 
@@ -73,6 +76,26 @@ public final class InputArbitrator: @unchecked Sendable {
         return aura_atomic_is_enabled(&arbitrationState)
     }
 
+    public var isMotionPriorityEnabled: Bool { aura_atomic_is_enabled(&motionPriorityState) }
+
+    /// Experimental mapping yields to pointer/trackpad movement as well as buttons.
+    /// Baseline retains upstream's button-only takeover policy.
+    public func setMotionPriorityEnabled(_ enabled: Bool) {
+        if enabled {
+            if !aura_atomic_is_enabled(&motionPriorityState) { _ = aura_atomic_enable(&motionPriorityState) }
+        } else {
+            var ignoredEpoch: UInt64 = 0
+            _ = aura_atomic_try_disable(&motionPriorityState, &ignoredEpoch)
+        }
+    }
+
+    static func shouldArbitrate(_ type: CGEventType, motionPriorityEnabled: Bool) -> Bool {
+        if type == .leftMouseDown || type == .rightMouseDown { return true }
+        guard motionPriorityEnabled else { return false }
+        return type == .mouseMoved || type == .leftMouseDragged || type == .rightMouseDragged ||
+            type == .otherMouseDragged || type == .otherMouseDown || type == .scrollWheel
+    }
+
     /// Strict 4-step re-enable method.
     public func reenableInjection() -> UInt64 {
         return aura_atomic_enable(&arbitrationState)
@@ -102,13 +125,16 @@ public final class InputArbitrator: @unchecked Sendable {
             }
             os_unfair_lock_unlock(&self.tapLock)
 
-            // Pointer movement and scrolling are frequently incidental (for example, a
-            // trackpad being nudged while using gestures).  Treating either as a takeover
-            // permanently disabled injection for the cooldown, even though no deliberate
-            // direct interaction occurred.  A physical button press is an unambiguous
-            // handoff and still immediately yields control.
+            // Observe a bounded superset so the policy can hot-switch without
+            // rebuilding the event tap. Disabled policy returns before arbitration.
             let eventMask: CGEventMask = (1 << CGEventType.leftMouseDown.rawValue) |
-                                         (1 << CGEventType.rightMouseDown.rawValue)
+                                         (1 << CGEventType.rightMouseDown.rawValue) |
+                                         (1 << CGEventType.otherMouseDown.rawValue) |
+                                         (1 << CGEventType.mouseMoved.rawValue) |
+                                         (1 << CGEventType.leftMouseDragged.rawValue) |
+                                         (1 << CGEventType.rightMouseDragged.rawValue) |
+                                         (1 << CGEventType.otherMouseDragged.rawValue) |
+                                         (1 << CGEventType.scrollWheel.rawValue)
 
             let selfPtr = Unmanaged.passUnretained(self).toOpaque()
 
@@ -227,6 +253,10 @@ public final class InputArbitrator: @unchecked Sendable {
         let userData = event.getIntegerValueField(.eventSourceUserData)
         if userData == kAuraMotionEventMagicTag {
             // Our own injected event: return immediately
+            return Unmanaged.passUnretained(event)
+        }
+
+        guard Self.shouldArbitrate(type, motionPriorityEnabled: aura_atomic_is_enabled(&motionPriorityState)) else {
             return Unmanaged.passUnretained(event)
         }
 
