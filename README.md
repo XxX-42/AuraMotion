@@ -47,6 +47,18 @@ You can also launch the application bundle directly:
 open build/AuraMotion.app
 ```
 
+### Day-to-day development
+
+Run `./scripts/dev.sh` (or double-click **Start AuraMotion Debug.command**) after editing Swift code. It incrementally builds the Debug executable, signs a separate `build/AuraMotion Debug.app`, and restarts only that Debug app. Use `./scripts/dev.sh --build-only` to build without launching; an existing Debug instance is stopped when its bundle is replaced. Logs are written to `build/auramotion-debug.log`. The Release bundle and launcher remain separate. Swift changes still need compilation and a restart; changes to settings exposed in the app do not.
+
+The script automatically selects the sole valid Apple Development identity, or accepts `AURAMOTION_SIGN_IDENTITY` as a certificate name or hash. It fails rather than silently falling back to ad-hoc signing. The Debug app has its own fixed bundle identifier (`com.ayush.AuraMotion.debug`), so grant it Camera, Accessibility, and optionally Input Monitoring access once, separately from Release. Keeping the same identity and bundle path usually avoids repeated authorization, though macOS can still request access again after certificate, privacy, or system changes. Debug and Release use separate bundle-scoped preferences. To inspect identities, run `security find-identity -v -p codesigning`.
+
+For future libraries, add compatible macOS dependencies to `Package.swift` and isolate their APIs behind an interface in `AuraMotionCore`. Hand tracking already uses `HandPoseProvider`; `MediaPipeHandPoseProvider` is an unavailable placeholder, not an integrated backend. The separate MediaPipe source checkout alone does not provide a macOS binary. Confirm platform support, lifecycle, model distribution, and licensing before adding a dependency. Debug builds use SwiftPM's incremental build cache; changing native code or dependencies still requires rebuilding and restarting.
+
+### Debug face landmarks
+
+On Apple Silicon, run `./scripts/setup_mediapipe_face.sh` once to create the local Python environment and download the official Face Landmarker model. Then launch with `./scripts/dev.sh`. The Debug HUD has independent **AuraMotion · Hand** and **MediaPipe · Face** display controls, both on by default. A separate Camera Preview button starts off and shows the camera image when enabled. The HUD reports AuraMotion hand inference FPS and the MediaPipe face result FPS; a dash means no recent face results. The hand button only hides the hand overlay; it does not disable hand control. The face button also starts or stops face inference. Face landmarks use the existing camera frames and are processed on-device in a separate Python worker with at most one frame in flight and raw resized BGRA frames; the face result does not drive the cursor. The displayed face FPS is bounded by camera capture FPS: a 30 FPS camera cannot supply more than 30 distinct camera frames per second. The HUD remembers its last resized dimensions for the next launch. Status appears in the HUD. The worker, model, and Python environment are local development dependencies under `build/` and are not included in Release builds. Launching the Debug app outside the provided launcher does not configure the worker paths. If status is Unavailable, check `build/auramotion-debug.log` and run the setup script again.
+
 ### Permissions
 
 Grant the requested access in **System Settings → Privacy & Security**:
@@ -59,7 +71,7 @@ Grant the requested access in **System Settings → Privacy & Security**:
 
 The app also checks macOS event-posting authorization before injecting input. Its HUD distinguishes camera access, Accessibility trust, and input-control authorization.
 
-Local builds are ad-hoc signed. After a rebuild, macOS may require authorization for the updated executable even when an older AuraMotion entry is enabled. If the app reports missing access:
+Release builds use ad-hoc signing by default; set `AURAMOTION_SIGN_IDENTITY` when running the release build script to use a development certificate. After a rebuild, macOS may require authorization for the updated executable even when an older AuraMotion entry is enabled. If the app reports missing access:
 
 1. Quit AuraMotion from its menu-bar menu.
 2. Remove an outdated AuraMotion entry from the relevant privacy setting.

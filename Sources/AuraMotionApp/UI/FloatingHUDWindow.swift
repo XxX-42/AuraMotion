@@ -28,15 +28,23 @@ public final class FloatingHUDWindow: NSPanel {
         self.contentMinSize = NSSize(width: 220, height: 200)
     }
 
+    public func saveHUDSize() {
+        guard frame.width >= 220, frame.height >= 200 else { return }
+        UserDefaults.standard.set(frame.width, forKey: "hudWindowWidth")
+        UserDefaults.standard.set(frame.height, forKey: "hudWindowHeight")
+    }
+
     public func restoreDefaultSize() {
         let current = frame
-        setFrame(NSRect(x: current.maxX - 220, y: current.maxY - 200, width: 220, height: 200),
+        setFrame(NSRect(x: current.maxX - 480, y: current.maxY - 360, width: 480, height: 360),
                  display: true, animate: true)
+        saveHUDSize()
     }
 
     public func resizeFromHandle(translation: CGSize, finished: Bool) {
         if finished {
             resizeStartFrame = nil
+            saveHUDSize()
             return
         }
         let start = resizeStartFrame ?? frame

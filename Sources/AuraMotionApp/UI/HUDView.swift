@@ -5,8 +5,19 @@ import AuraMotionCore
 public struct HUDView: View {
     @ObservedObject private var localization = AppLocalization.shared
     @State private var snapshot: HUDSnapshot?
+    #if DEBUG
+    @State private var showAuraMotion = true
+    @State private var showMediaPipe = true
+    @State private var facePoints: [[Double]] = []
+    @State private var faceStatus = "Starting"
+    @State private var showCamera = false
+    @State private var faceFPS: Double?
+    @State private var faceLastUpdate: Date?
+    @State private var fpsClock = Date()
+    #endif
     @State private var isCompact = false
     @State private var showJointNumbers = AppEnvironment.shared.currentSettings.hudShowsJointNumbers
+    @State private var highlightFirstRing = AppEnvironment.shared.currentSettings.hudHighlightFirstRing
     @State private var previewMirrored = AppEnvironment.shared.currentSettings.hudPreviewMirrored
     @State private var skeletonScale = AppEnvironment.shared.currentSettings.hudSkeletonScale
     @State private var pendingScaleSave: DispatchWorkItem?
@@ -37,6 +48,18 @@ public struct HUDView: View {
 
                 Spacer()
 
+                Button {
+                    highlightFirstRing.toggle()
+                    AppEnvironment.shared.updateHUDJointDisplay(highlightFirstRing: highlightFirstRing)
+                } label: {
+                    Text(L10n.tr("First Ring"))
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundColor(highlightFirstRing ? .red : .white.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.tr("Highlight first ring in red above other nodes"))
+                .accessibilityValue(highlightFirstRing ? L10n.tr("On") : L10n.tr("Off"))
+
                 Button(action: { isCompact.toggle() }) {
                     Image(systemName: isCompact ? "chevron.down" : "chevron.up")
                         .font(.system(size: 13.5))
@@ -53,7 +76,7 @@ public struct HUDView: View {
                         .onChanged { _ in moveChanged() }
                         .onEnded { _ in moveStartMouse = nil; onMove(.zero, true) })
                     .simultaneousGesture(TapGesture(count: 2).onEnded { onRestoreSize() })
-                    .padding(.trailing, 35)
+                    .padding(.trailing, 80)
             }
 
             // Status Pill
@@ -78,6 +101,29 @@ public struct HUDView: View {
             }
             .padding(.horizontal, 10)
 
+            #if DEBUG
+            HStack(spacing: 6) {
+                Button { showAuraMotion.toggle() } label: {
+                    Text("AuraMotion · Hand")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .foregroundColor(showAuraMotion ? .cyan : .gray)
+                        .background(Color.white.opacity(showAuraMotion ? 0.16 : 0.05), in: Capsule())
+                }.buttonStyle(.plain).accessibilityValue(showAuraMotion ? "On" : "Off")
+                Button {
+                    showMediaPipe.toggle()
+                    DebugFaceWorker.shared.setEnabled(showMediaPipe)
+                    if !showMediaPipe { facePoints = []; faceStatus = "Off"; faceFPS = nil; faceLastUpdate = nil }
+                } label: {
+                    Text("MediaPipe · Face")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .foregroundColor(showMediaPipe ? .green : .gray)
+                        .background(Color.white.opacity(showMediaPipe ? 0.16 : 0.05), in: Capsule())
+                }.buttonStyle(.plain).accessibilityValue(showMediaPipe ? "On" : "Off")
+            }.padding(.horizontal, 6)
+            #endif
+
             if !isCompact {
                 HStack(alignment: .top, spacing: 4) {
                     Text(effectiveCursorStrategyLabel)
@@ -91,6 +137,20 @@ public struct HUDView: View {
                 .foregroundColor(.white.opacity(0.62))
                 .padding(.horizontal, 10)
 
+                #if DEBUG
+                HStack {
+                    Button { showCamera.toggle() } label: {
+                        Text(L10n.tr("Camera Preview"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .foregroundColor(showCamera ? .cyan : .white.opacity(0.7))
+                            .background(Color.white.opacity(showCamera ? 0.16 : 0.07), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityValue(showCamera ? L10n.tr("On") : L10n.tr("Off"))
+                    Spacer()
+                }.padding(.horizontal, 10)
+                #endif
                 HStack(spacing: 6) {
                     Button {
                         previewMirrored.toggle()
@@ -105,7 +165,7 @@ public struct HUDView: View {
                             .background(Color.white.opacity(previewMirrored ? 0.16 : 0.07), in: RoundedRectangle(cornerRadius: 5))
                     }
                     .buttonStyle(.plain)
-                    .disabled(snapshot?.hudShowsCamera != true)
+                    .disabled(!cameraPreviewEnabled)
                     .accessibilityValue(previewMirrored ? L10n.tr("On") : L10n.tr("Off"))
 
                     Button {
@@ -145,7 +205,7 @@ public struct HUDView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.black.opacity(0.4))
 
-                    if snapshot?.showHUD == true && snapshot?.hudShowsCamera == true {
+                    if snapshot?.showHUD == true && cameraPreviewEnabled {
                         CameraPreviewView(
                             session: AppEnvironment.shared.capturePipeline.previewSession,
                             isMirrored: ((snapshot?.isCameraMirrored ?? true) == (snapshot?.isVideoDataMirrored ?? false)) != previewMirrored
@@ -153,12 +213,19 @@ public struct HUDView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
 
-                    if let sample = snapshot?.sample {
+                    #if DEBUG
+                    if showMediaPipe {
+                        FaceLandmarksView(points: facePoints, flipHorizontally: faceOverlayMirrored)
+                            .allowsHitTesting(false)
+                    }
+                    #endif
+                    if let sample = snapshot?.sample, handOverlayEnabled {
                         SkeletonView(sample: sample, showNumbers: showJointNumbers,
                                      scale: skeletonScale,
-                                     flipHorizontally: snapshot?.hudShowsCamera == true && !previewMirrored)
+                                     flipHorizontally: cameraPreviewEnabled && !previewMirrored,
+                                     highlightFirstRing: highlightFirstRing)
                             .allowsHitTesting(false)
-                    } else {
+                    } else if handOverlayEnabled {
                         VStack(spacing: 4) {
                             Image(systemName: "hand.raised.slash")
                                 .font(.system(size: 30))
@@ -174,6 +241,20 @@ public struct HUDView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
 
+                #if DEBUG
+                if showMediaPipe {
+                    Text("MediaPipe Face: " + faceStatus)
+                        .font(.system(size: 10)).foregroundColor(.white.opacity(0.65))
+                }
+                #endif
+                #if DEBUG
+                HStack(spacing: 12) {
+                    MetricLabel(title: "AuraMotion FPS", value: String(format: "%.1f", snapshot?.performance.inferenceFPS ?? 0))
+                    MetricLabel(title: "MediaPipe FPS", value: faceFPSLabel)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                #endif
                 // Telemetry Footer
                 HStack(spacing: 12) {
                     MetricLabel(title: L10n.tr("CAP"), value: String(format: "%.0f", snapshot?.performance.captureFPS ?? 0))
@@ -216,12 +297,60 @@ public struct HUDView: View {
                 self.snapshot = snap
             }
         }
+        #if DEBUG
+        .onAppear { DebugFaceWorker.shared.setEnabled(showMediaPipe) }
+        .onDisappear { DebugFaceWorker.shared.setEnabled(false) }
+        .onReceive(NotificationCenter.default.publisher(for: DebugFaceWorker.notification)) { note in
+            guard showMediaPipe else { return }
+            facePoints = note.userInfo?["points"] as? [[Double]] ?? []
+            faceStatus = note.userInfo?["status"] as? String ?? "Unavailable"
+            faceFPS = note.userInfo?["fps"] as? Double
+            faceLastUpdate = faceStatus == "Active" || faceStatus == "No face" ? Date() : nil
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { fpsClock = $0 }
+        #endif
         .onChange(of: skeletonScale) { _, newValue in
             pendingScaleSave?.cancel()
             let work = DispatchWorkItem { AppEnvironment.shared.updateHUDJointDisplay(scale: newValue) }
             pendingScaleSave = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
+    }
+
+    #if DEBUG
+    // Face coordinates come from the video-data output, while the preview has
+    // its own connection. Mirror only when their actual orientations differ.
+    private var faceOverlayMirrored: Bool {
+        let videoMirrored = snapshot?.isVideoDataMirrored ?? false
+        let cameraMirrored = snapshot?.isCameraMirrored ?? true
+        guard cameraPreviewEnabled else { return cameraMirrored != videoMirrored }
+        let previewConnectionMirrored = (cameraMirrored == videoMirrored) != previewMirrored
+        return previewConnectionMirrored != videoMirrored
+    }
+    #endif
+
+    private var cameraPreviewEnabled: Bool {
+        #if DEBUG
+        return showCamera
+        #else
+        return snapshot?.hudShowsCamera == true
+        #endif
+    }
+
+    #if DEBUG
+    private var faceFPSLabel: String {
+        guard showMediaPipe, let last = faceLastUpdate, fpsClock.timeIntervalSince(last) < 3,
+              let fps = faceFPS else { return "—" }
+        return String(format: "%.1f", fps)
+    }
+    #endif
+
+    private var handOverlayEnabled: Bool {
+        #if DEBUG
+        return showAuraMotion
+        #else
+        return true
+        #endif
     }
 
     private func resizeChanged() {
@@ -332,6 +461,7 @@ struct SkeletonView: View {
     let showNumbers: Bool
     let scale: Double
     let flipHorizontally: Bool
+    let highlightFirstRing: Bool
 
     // Bone connections
     private let bones: [(HandJointName, HandJointName)] = [
@@ -366,25 +496,35 @@ struct SkeletonView: View {
             )
 
             // Landmarks
-            ForEach(HandJointName.allCases, id: \.self) { name in
-                if let pt = sample.joint(name, minConfidence: 0.25) {
-                    ZStack {
-                        Circle()
-                            .fill(name == .indexTip || name == .thumbTip ? Color.yellow : Color.cyan)
-                            .frame(width: (name == .indexTip ? 6 : 4) * scale,
-                                   height: (name == .indexTip ? 6 : 4) * scale)
-                        if showNumbers {
-                            Text("\(name.landmarkNumber)")
-                                .font(.system(size: 13.5 * scale, weight: .bold, design: .monospaced))
-                                .foregroundColor(.white)
-                                .shadow(color: .black, radius: 2)
-                                .fixedSize()
-                                .offset(x: 8 * scale, y: -8 * scale)
-                        }
-                    }
-                    .position(convert(pt, size: geo.size))
+            ForEach(HandLandmarkRings.second.filter { !highlightFirstRing || !$0.isFirstRing }, id: \.self) { name in
+                landmark(name, in: geo.size, highlighted: false)
+            }
+            if highlightFirstRing {
+                ForEach(HandLandmarkRings.first, id: \.self) { name in
+                    landmark(name, in: geo.size, highlighted: true)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func landmark(_ name: HandJointName, in size: CGSize, highlighted: Bool) -> some View {
+        if let pt = sample.joint(name, minConfidence: 0.25) {
+            ZStack {
+                Circle()
+                    .fill(highlighted ? Color.red : (name == .indexTip || name == .thumbTip ? .yellow : .cyan))
+                    .frame(width: (name == .indexTip ? 6 : 4) * scale,
+                           height: (name == .indexTip ? 6 : 4) * scale)
+                if showNumbers {
+                    Text("\(name.landmarkNumber)")
+                        .font(.system(size: 13.5 * scale, weight: .bold, design: .monospaced))
+                        .foregroundColor(highlighted ? .red : .white)
+                        .shadow(color: .black, radius: 2)
+                        .fixedSize()
+                        .offset(x: 8 * scale, y: -8 * scale)
+                }
+            }
+            .position(convert(pt, size: size))
         }
     }
 
@@ -394,3 +534,19 @@ struct SkeletonView: View {
                        y: (1.0 - pt.y) * size.height)
     }
 }
+
+#if DEBUG
+private struct FaceLandmarksView: View {
+    let points: [[Double]]
+    let flipHorizontally: Bool
+    var body: some View {
+        Canvas { context, size in
+            for point in points where point.count == 2 && point[0].isFinite && point[1].isFinite {
+                let x = (flipHorizontally ? 1 - point[0] : point[0]) * size.width
+                let y = point[1] * size.height
+                context.fill(Path(ellipseIn: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)), with: .color(.green.opacity(0.8)))
+            }
+        }
+    }
+}
+#endif

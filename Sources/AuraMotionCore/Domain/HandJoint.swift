@@ -30,6 +30,16 @@ public enum HandJointName: String, CaseIterable, Sendable, Codable, CodingKeyRep
     case littleDIP
     case littleTip
 
+    /// First ring is the palm/wrist subset of the full 21-point second ring.
+    public var isFirstRing: Bool {
+        switch self {
+        case .wrist, .thumbCMC, .thumbMP, .indexMCP, .middleMCP, .ringMCP, .littleMCP:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// Stable display numbering: wrist, then thumb through little finger.
     public var landmarkNumber: Int {
         switch self {
@@ -56,6 +66,12 @@ public enum HandJointName: String, CaseIterable, Sendable, Codable, CodingKeyRep
         case .littleTip: return 20
         }
     }
+}
+
+/// The second ring contains every landmark; the first ring is its palm subset.
+public enum HandLandmarkRings {
+    public static let second = HandJointName.allCases
+    public static let first = second.filter(\.isFirstRing)
 }
 
 /// A single detected 2D hand joint observation.

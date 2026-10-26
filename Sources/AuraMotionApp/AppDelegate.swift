@@ -13,7 +13,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // 1. Create Floating HUD Panel
         let screenRect = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let hudRect = NSRect(x: screenRect.maxX - 240, y: screenRect.maxY - 220, width: 220, height: 200)
+        let savedWidth = UserDefaults.standard.double(forKey: "hudWindowWidth")
+        let savedHeight = UserDefaults.standard.double(forKey: "hudWindowHeight")
+        let width = savedWidth.isFinite && savedWidth >= 220 ? min(savedWidth, screenRect.width) : min(480, screenRect.width)
+        let height = savedHeight.isFinite && savedHeight >= 200 ? min(savedHeight, screenRect.height) : min(360, screenRect.height)
+        let hudRect = NSRect(x: screenRect.maxX - width - 20, y: screenRect.maxY - height - 20, width: width, height: height)
         let hud = FloatingHUDWindow(contentRect: hudRect)
         hud.contentView = NSHostingView(rootView: HUDView(
             onResize: { [weak hud] translation, finished in
@@ -66,6 +70,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
+        hudWindow?.saveHUDSize()
         AppEnvironment.shared.stop()
     }
 

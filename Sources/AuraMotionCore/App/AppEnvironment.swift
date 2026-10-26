@@ -22,6 +22,7 @@ public struct HUDSnapshot: Sendable {
     public var cameraAspectRatio = 16.0 / 9.0
     public var isVideoDataMirrored = false
     public var hudShowsJointNumbers = false
+    public var hudHighlightFirstRing = false
     public var hudSkeletonScale = 1.0
     public var clickFeedbackID: UInt64 = 0
     public var clickFeedbackLocation: CGPoint? = nil
@@ -495,12 +496,13 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     }
 
     /// Changes only the HUD drawing preferences on the interaction queue.
-    public func updateHUDJointDisplay(showNumbers: Bool? = nil, scale: Double? = nil, previewMirrored: Bool? = nil) {
+    public func updateHUDJointDisplay(showNumbers: Bool? = nil, scale: Double? = nil, previewMirrored: Bool? = nil, highlightFirstRing: Bool? = nil) {
         interactionQueue.async { [weak self] in
             guard let self else { return }
             var updated = self.currentSettings
             if let showNumbers { updated.hudShowsJointNumbers = showNumbers }
             if let previewMirrored { updated.hudPreviewMirrored = previewMirrored }
+            if let highlightFirstRing { updated.hudHighlightFirstRing = highlightFirstRing }
             if let scale, scale.isFinite { updated.hudSkeletonScale = min(3, max(0.5, scale)) }
             guard updated != self.currentSettings else { return }
             self.currentSettings = updated
@@ -601,6 +603,9 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     // MARK: - CapturePipelineDelegate
 
     public func capturePipeline(_ pipeline: CapturePipeline, didOutput carrier: SampleCarrier) {
+        #if DEBUG
+        DebugFaceWorker.shared.submit(carrier)
+        #endif
         performanceTracker.recordCaptureFrame(
             timestamp: carrier.hostPresentationTime,
             droppedFrames: pipeline.mailbox.droppedFrames
@@ -874,6 +879,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         snapshot.cameraAspectRatio = capturePipeline.previewAspectRatio
         snapshot.isVideoDataMirrored = capturePipeline.isVideoDataMirrored
         snapshot.hudShowsJointNumbers = currentSettings.hudShowsJointNumbers
+        snapshot.hudHighlightFirstRing = currentSettings.hudHighlightFirstRing
         snapshot.hudSkeletonScale = currentSettings.hudSkeletonScale
         snapshot.rawCursorLocation = latestRawCursorLocation
         snapshot.cursorExperimentStatus = cursorController.cursorExperimentStatus

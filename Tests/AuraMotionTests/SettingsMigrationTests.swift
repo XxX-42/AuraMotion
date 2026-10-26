@@ -29,6 +29,7 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertFalse(settings.hudShowsCamera)
         XCTAssertTrue(settings.hudPreviewMirrored)
         XCTAssertFalse(settings.hudShowsJointNumbers)
+        XCTAssertFalse(settings.hudHighlightFirstRing)
         XCTAssertEqual(settings.hudSkeletonScale, 1)
         XCTAssertEqual(settings.clutchDwellTime, 0.12)
         XCTAssertTrue(settings.isPalmSwipeEnabled)
@@ -53,10 +54,12 @@ final class SettingsMigrationTests: XCTestCase {
         let repository = SettingsRepository(userDefaults: defaults)
         var settings = AppSettings()
         settings.hudShowsJointNumbers = true
+        settings.hudHighlightFirstRing = true
         settings.hudPreviewMirrored = false
         settings.hudSkeletonScale = 2.4
         repository.saveSettings(settings)
         XCTAssertTrue(repository.loadSettings().hudShowsJointNumbers)
+        XCTAssertTrue(repository.loadSettings().hudHighlightFirstRing)
         XCTAssertFalse(repository.loadSettings().hudPreviewMirrored)
         XCTAssertEqual(repository.loadSettings().hudSkeletonScale, 2.4)
         settings.hudSkeletonScale = 100
@@ -68,6 +71,8 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertEqual(HandJointName.allCases.map(\.landmarkNumber), Array(0...20))
         XCTAssertEqual(HandJointName.indexTip.landmarkNumber, 8)
         XCTAssertEqual(HandJointName.littleTip.landmarkNumber, 20)
+        XCTAssertEqual(HandLandmarkRings.second.count, 21)
+        XCTAssertEqual(HandLandmarkRings.first.map(\.landmarkNumber), [0, 1, 2, 5, 9, 13, 17])
     }
 
     func testExplicitSwipeSelectionSurvivesReload() throws {

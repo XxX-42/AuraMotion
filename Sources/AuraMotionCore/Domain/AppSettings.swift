@@ -24,6 +24,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
     public var hudShowsCamera: Bool
     public var hudPreviewMirrored: Bool
     public var hudShowsJointNumbers: Bool
+    public var hudHighlightFirstRing: Bool
     public var hudSkeletonScale: Double
     public var showClickFeedback: Bool
     public var hudSkeletonFPS: Int
@@ -43,6 +44,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         hudShowsCamera: Bool = false,
         hudPreviewMirrored: Bool = true,
         hudShowsJointNumbers: Bool = false,
+        hudHighlightFirstRing: Bool = false,
         hudSkeletonScale: Double = 1,
         showClickFeedback: Bool = true,
         hudSkeletonFPS: Int = 30,
@@ -61,6 +63,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.hudShowsCamera = hudShowsCamera
         self.hudPreviewMirrored = hudPreviewMirrored
         self.hudShowsJointNumbers = hudShowsJointNumbers
+        self.hudHighlightFirstRing = hudHighlightFirstRing
         self.hudSkeletonScale = hudSkeletonScale
         self.showClickFeedback = showClickFeedback
         self.hudSkeletonFPS = hudSkeletonFPS
