@@ -18,6 +18,8 @@ public struct HUDSnapshot: Sendable {
     public var clickFeedbackID: UInt64 = 0
     public var clickFeedbackLocation: CGPoint? = nil
     public var rawCursorLocation: CGPoint? = nil
+    public var cursorExperimentStatus: String = "Baseline"
+    public var cursorDiagnostics: CursorMotionDiagnostics? = nil
 }
 
 public protocol AppEnvironmentObserver: AnyObject, Sendable {
@@ -26,7 +28,9 @@ public protocol AppEnvironmentObserver: AnyObject, Sendable {
 
 /// Central coordinator for AuraMotion.
 /// Enforces a strict single-queue ownership model for interaction state on interactionQueue.
-public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorkerDelegate, GestureStateMachi
+public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorkerDelegate, GestureStateMachineDelegate, InputArbitratorDelegate, @unchecked Sendable {
+    public static let shared = AppEnvironment()
+
     // Dedicated serial queue for all interaction state and FSM transitions
     public let interactionQueue = DispatchQueue(label: "com.auramotion.interaction", qos: .userInteractive)
     private let safetyQueue = DispatchQueue(label: "com.auramotion.safety", qos: .userInteractive)
@@ -88,6 +92,13 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         recognitionTime = CACurrentMediaTime()
     }
 
+    /// Transitions and settings changes are rare, so query Quartz here rather
+    /// than on the per-frame interaction path. Fall back to the last mapped
+    /// output when the current pointer location is unavailable.
+    private func visibleCursorLocation(fallback: CGPoint? = nil) -> CGPoint? {
+        CGEvent(source: nil)?.location ?? cursorController.lastOutputLocation ?? fallback ?? latestCursorLocation
+    }
+
     public init() {
         let repo = SettingsRepository()
         let settings = repo.loadSettings()
@@ -101,12 +112,14 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         self.currentSettings = settings
         self.currentCalibration = cal
         self.cursorController = CursorController(profile: cal)
+        self.cursorController.reconfigure(settings.cursorExperiment, cursorPosition: CGEvent(source: nil)?.location)
 
         // Wire delegates
         self.capturePipeline.delegate = self
         self.visionWorker.delegate = self
         self.stateMachine.delegate = self
         self.inputArbitrator.delegate = self
+        self.inputArbitrator.setMotionPriorityEnabled(settings.cursorExperiment.hasCursorExperiments)
 
         // Wire epoch and injection validation providers into outputCoordinator
         self.outputCoordinator.epochProvider = { [weak self] in
@@ -281,6 +294,31 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     public func updateSettings(_ newSettings: AppSettings) {
         interactionQueue.async { [weak self] in
             guard let self = self else { return }
+            let cursorSettingsChanged = self.currentSettings.cursorExperiment.normalized() != newSettings.cursorExperiment.normalized()
+            let cursorRebaseRequired = self.cursorController.requiresRebase(for: newSettings.cursorExperiment)
+            var visibleCursor: CGPoint?
+            if cursorRebaseRequired {
+                visibleCursor = self.visibleCursorLocation(fallback: self.latestCursorLocation)
+                // Drop queued pointer/drag work and release any held button
+                // before replacing the mapping configuration.
+                self.outputCoordinator.emergencyRelease()
+                self.cursorController.freeze(at: visibleCursor)
+                if self.stateMachine.currentState == .dragging || self.stateMachine.currentState == .pinchArmed {
+                    self.stateMachine.reset()
+                }
+            }
+            if cursorSettingsChanged {
+                self.cursorController.reconfigure(
+                    newSettings.cursorExperiment,
+                    cursorPosition: visibleCursor ?? self.visibleCursorLocation(fallback: self.latestCursorLocation)
+                )
+            }
+            if cursorRebaseRequired {
+                self.cursorController.setInteractionState(self.stateMachine.currentState, currentCursor: visibleCursor)
+            }
+            if cursorSettingsChanged {
+                self.inputArbitrator.setMotionPriorityEnabled(newSettings.cursorExperiment.hasCursorExperiments)
+            }
             self.currentSettings = newSettings
             self.visionWorker.isMirrored = newSettings.isCameraMirrored
             self.stateMachine.isClutchEnabled = newSettings.isClutchEnabled
@@ -364,8 +402,12 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
                 self.landmarkRecorder.record(sample: tracked)
 
                 if let tip = tracked.joint(.indexTip, minConfidence: 0.45) {
-                    self.latestRawCursorLocation = self.cursorController.mapper.mapToQuartzGlobal(visionPoint: tip)
                     mappedCursor = self.cursorController.processHand(tracked)
+                    if self.currentSettings.cursorExperiment.stableAnchorEnabled {
+                        self.latestRawCursorLocation = self.cursorController.lastDiagnostics.rawAnchor
+                    } else {
+                        self.latestRawCursorLocation = self.cursorController.mapper.mapToQuartzGlobal(visionPoint: tip)
+                    }
                 } else {
                     // Keep palm/shortcut detection alive without switching the cursor's
                     // tracking landmark, which caused large jumps on fingertip occlusion.
@@ -393,11 +435,18 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     // MARK: - GestureStateMachineDelegate
 
     public func stateMachine(_ fsm: GestureStateMachine, didTransitionTo state: GestureState) {
+        let visibleCursor = visibleCursorLocation(fallback: latestCursorLocation)
+        cursorController.setInteractionState(state, currentCursor: visibleCursor)
+        if currentSettings.cursorExperiment.hasCursorExperiments && state != .pointer && state != .dragging {
+            latestCursorLocation = visibleCursor ?? latestCursorLocation
+        }
         publishHUDSnapshot()
     }
 
     public func stateMachine(_ fsm: GestureStateMachine, emitMoveTo location: CGPoint, epoch: UInt64) {
-        outputCoordinator.enqueueMove(to: location, epoch: epoch)
+        let outputLocation = cursorController.consumeResumeMoveOverride() ?? location
+        latestCursorLocation = outputLocation
+        outputCoordinator.enqueueMove(to: outputLocation, epoch: epoch)
     }
 
     public func stateMachine(_ fsm: GestureStateMachine, emitClickAt anchor: CGPoint, epoch: UInt64) {
@@ -412,6 +461,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     }
 
     public func stateMachine(_ fsm: GestureStateMachine, emitDragMoveTo location: CGPoint, epoch: UInt64) {
+        latestCursorLocation = location
         outputCoordinator.enqueueDragMove(to: location, epoch: epoch)
     }
 
@@ -553,6 +603,10 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         snapshot.commandMenu = stateMachine.commandMenu.snapshot
         snapshot.showHUD = currentSettings.showHUD
         snapshot.rawCursorLocation = latestRawCursorLocation
+        snapshot.cursorExperimentStatus = cursorController.cursorExperimentStatus
+        snapshot.cursorDiagnostics = currentSettings.cursorExperiment.hasCursorExperiments
+            ? cursorController.lastDiagnostics
+            : nil
         snapshot.clickFeedbackID = clickFeedbackID
         snapshot.clickFeedbackLocation = currentSettings.showClickFeedback ? clickFeedbackLocation : nil
         let publishedSnapshot = snapshot
