@@ -67,7 +67,7 @@ public struct CursorExperimentSettings: Codable, Sendable, Equatable {
     public func normalized() -> Self {
         var result = self
         func clamp(_ value: Double, _ low: Double, _ high: Double, _ fallback: Double) -> Double {
-            value.isFinite ? min(high, max(low, value)) : fallback
+            min(high, max(low, value.isFinite ? value : fallback))
         }
         result.pointerMinCutoff = clamp(pointerMinCutoff, 0.1, 10, 0.5)
         result.pointerBeta = clamp(pointerBeta, 0, 0.1, 0.015)
