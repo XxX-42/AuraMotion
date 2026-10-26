@@ -2,12 +2,12 @@ import CoreVideo
 import Foundation
 
 /// Explicit unavailable marker for the optional MediaPipe benchmark backend.
-/// This target has no MediaPipeTasksVision package or bundled Hand Landmarker
-/// model, so this provider never schedules work and never returns a sample.
+/// The current upstream binary package has no macOS slice, so this provider
+/// never schedules work and never returns a sample on this platform.
 public final class MediaPipeHandPoseProvider: HandPoseProvider, @unchecked Sendable {
     public static let isAvailable = false
     public static let unavailabilityReason: String? =
-        "MediaPipeTasksVision and a Hand Landmarker model are not included in this target."
+        "MediaPipe Tasks Vision is unavailable on macOS: the current upstream binary provides iOS and iOS Simulator slices only, with no macOS slice."
 
     public let identifier = "mediapipe"
 

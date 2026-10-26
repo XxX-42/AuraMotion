@@ -24,7 +24,7 @@ final class PointerAnchorTests: XCTestCase {
         ]
         if invalidStablePositions {
             for name in [HandJointName.wrist, .indexMCP, .middleMCP, .ringMCP, .littleMCP] {
-                positions[name] = CGPoint(x: .nan, y: .nan)
+                positions[name] = CGPoint(x: CGFloat.nan, y: CGFloat.nan)
             }
         }
 

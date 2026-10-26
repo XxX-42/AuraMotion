@@ -284,7 +284,7 @@ public enum CursorExperimentReplayEvaluator {
                 state: frame.state,
                 motionPhase: hasControllerObservation ? diagnostics.phase : nil,
                 target: frame.groundTruth?.target,
-                targetPhase: frame.groundTruth?.phase,
+                targetPhase: frame.groundTruth?.phase ?? recording.metadata.declaredTaskPhase,
                 targetEvent: frame.groundTruth?.event,
                 inferenceDurationMilliseconds: frame.inferenceDurationMilliseconds,
                 mailboxWaitMilliseconds: frame.mailboxWaitMilliseconds
@@ -322,7 +322,7 @@ public enum CursorExperimentReplayEvaluator {
                 return Self.finite(point)
             }
             let stationaryPoints = recording.frames.compactMap { frame -> CGPoint? in
-                guard frame.groundTruth?.phase == .stationary,
+                guard declaredPhase(for: frame, recording: recording) == .stationary,
                       let point = frame.sample?.joint(joint) else { return nil }
                 return Self.finite(point)
             }
@@ -337,7 +337,8 @@ public enum CursorExperimentReplayEvaluator {
             return Self.palmCentroid(sample)
         }
         let stationaryPalmPoints = recording.frames.compactMap { frame -> CGPoint? in
-            guard frame.groundTruth?.phase == .stationary, let sample = frame.sample else { return nil }
+            guard declaredPhase(for: frame, recording: recording) == .stationary,
+                  let sample = frame.sample else { return nil }
             return Self.palmCentroid(sample)
         }
         statistics["palmCentroid"] = CursorExperimentJointStatistics(
@@ -347,7 +348,7 @@ public enum CursorExperimentReplayEvaluator {
 
         let pointerPoints = rows.compactMap(\.rawAnchor)
         let stationaryPointerPoints = zip(recording.frames, rows).compactMap { frame, row -> CGPoint? in
-            guard frame.groundTruth?.phase == .stationary else { return nil }
+            guard declaredPhase(for: frame, recording: recording) == .stationary else { return nil }
             return row.rawAnchor
         }
         statistics["finalPointerAnchor"] = CursorExperimentJointStatistics(
@@ -357,7 +358,7 @@ public enum CursorExperimentReplayEvaluator {
 
         let cursorPoints = rows.compactMap(\.cursor)
         let stationaryCursorPoints = zip(recording.frames, rows).compactMap { frame, row -> CGPoint? in
-            guard frame.groundTruth?.phase == .stationary else { return nil }
+            guard declaredPhase(for: frame, recording: recording) == .stationary else { return nil }
             return row.cursor
         }
         statistics["cursorOutput"] = CursorExperimentJointStatistics(
@@ -390,13 +391,20 @@ public enum CursorExperimentReplayEvaluator {
             residentMemoryBytes: .unavailable("Resident memory requires a process sampler during the run (for example scripts/measure_process.py).", unit: "bytes"),
             calibrationProfileIsRecorded: recording.metadata.calibrationProfileIsRecorded,
             initialCursorWasAssumed: recording.metadata.initialCursorPosition == nil,
-            interpretationNote: "All-observation sigma and displacement describe the full trace. They are jitter only for explicitly stationary-labeled observations. Target and task metrics require recorded ground-truth annotations. Inference timing, CPU, memory, and mailbox drops are unavailable when not captured."
+            interpretationNote: "All-observation sigma and displacement describe the full trace. They are jitter only for frames explicitly labeled stationary or a recording declared for stationary hold. A declared purpose does not provide target coordinates. Target and task metrics require recorded ground-truth annotations. Inference timing, CPU, memory, and mailbox drops are unavailable when not captured."
         )
+    }
+
+    private static func declaredPhase(
+        for frame: CursorExperimentFrame,
+        recording: CursorExperimentRecording
+    ) -> CursorExperimentTaskPhase? {
+        frame.groundTruth?.phase ?? recording.metadata.declaredTaskPhase
     }
 
     private static func stationaryAxisStatistics(_ points: [CGPoint], joint: String, unit: String = "normalized_image_units") -> CursorExperimentAxisStatistics {
         guard !points.isEmpty else {
-            let reason = "No frames explicitly labeled stationary were recorded for \(joint)."
+            let reason = "No frames labeled stationary by the frame or recording purpose were recorded for \(joint)."
             return CursorExperimentAxisStatistics(
                 observationCount: 0,
                 unit: unit,

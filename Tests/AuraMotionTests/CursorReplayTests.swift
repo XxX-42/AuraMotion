@@ -18,19 +18,27 @@ final class CursorReplayTests: XCTestCase {
     }
 
     func testRecordedTimingPercentilesAndFrameMetadataAreSummarized() throws {
-        let frames = (0..<5).map { index in
-            CursorExperimentFrame(
-                timestamp: 100 + Double(index) / 10,
+        let frames: [CursorExperimentFrame] = (0..<5).map { index in
+            let timestamp = 100.0 + Double(index) / 10.0
+            let fullFrame = index == 0
+            let roi = CursorExperimentROI(
+                x: 0,
+                y: 0,
+                width: fullFrame ? 1.0 : 0.5,
+                height: 1.0,
+                usedFullFrame: fullFrame,
+                fallbackReason: index == 4 ? "hand-loss" : nil
+            )
+            let inferenceMilliseconds = Double(index + 1)
+            let mailboxMilliseconds = Double((index + 1) * 2)
+            return CursorExperimentFrame(
+                timestamp: timestamp,
                 source: .camera,
                 sample: nil,
-                inferenceDurationMilliseconds: Double(index + 1),
-                mailboxWaitMilliseconds: Double((index + 1) * 2),
+                inferenceDurationMilliseconds: inferenceMilliseconds,
+                mailboxWaitMilliseconds: mailboxMilliseconds,
                 droppedFrames: index,
-                roi: CursorExperimentROI(
-                    x: 0, y: 0, width: index == 0 ? 1 : 0.5, height: 1,
-                    usedFullFrame: index == 0,
-                    fallbackReason: index == 4 ? "hand-loss" : nil
-                )
+                roi: roi
             )
         }
         let recording = CursorExperimentRecording(

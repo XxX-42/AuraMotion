@@ -2,6 +2,7 @@ import QuartzCore
 import Foundation
 import CoreGraphics
 import AVFoundation
+import CoreMedia
 import AppKit
 
 public struct HUDSnapshot: Sendable {
@@ -20,6 +21,9 @@ public struct HUDSnapshot: Sendable {
     public var rawCursorLocation: CGPoint? = nil
     public var cursorExperimentStatus: String = "Baseline"
     public var cursorDiagnostics: CursorMotionDiagnostics? = nil
+    public var cursorExperimentSettings = CursorExperimentSettings()
+    public var visionWorkerStatus: VisionWorkerStatusSnapshot? = nil
+    public var isVisionReconfigurationPending = false
 }
 
 public protocol AppEnvironmentObserver: AnyObject, Sendable {
@@ -34,6 +38,10 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     // Dedicated serial queue for all interaction state and FSM transitions
     public let interactionQueue = DispatchQueue(label: "com.auramotion.interaction", qos: .userInteractive)
     private let safetyQueue = DispatchQueue(label: "com.auramotion.safety", qos: .userInteractive)
+    private let visionConfigurationLock = NSLock()
+    private var visionConfigurationGeneration: UInt64 = 0
+    private var visionReconfigurationPending = false
+    private let experimentExportQueue = DispatchQueue(label: "com.auramotion.experiment-export", qos: .utility)
 
     // Core subsystems
     public let permissionsManager = PermissionsManager()
@@ -48,6 +56,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     public let performanceTracker = PerformanceTracker()
     public let qualityLadder = QualityLadder()
     public let landmarkRecorder = LandmarkRecorder()
+    private let experimentMetricsRecorder = CursorExperimentMetricsRecorder()
 
     public weak var observer: AppEnvironmentObserver?
 
@@ -113,6 +122,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         self.currentCalibration = cal
         self.cursorController = CursorController(profile: cal)
         self.cursorController.reconfigure(settings.cursorExperiment, cursorPosition: CGEvent(source: nil)?.location)
+        AppLocalization.shared.setLanguage(settings.language)
 
         // Wire delegates
         self.capturePipeline.delegate = self
@@ -137,6 +147,10 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         self.stateMachine.scrollDetector.scrollController.isInertiaEnabled = settings.scrollInertiaEnabled
         self.stateMachine.isPalmSwipeEnabled = settings.isPalmSwipeEnabled
         self.stateMachine.updateCalibration(cal)
+
+        if settings.cursorExperiment.visionROIEnabled || settings.cursorExperiment.mediaPipeBenchmarkEnabled {
+            self.visionWorker.reconfigure(settings.cursorExperiment) {}
+        }
 
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
@@ -275,7 +289,128 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
             self.outputCoordinator.emergencyRelease()
             self.capturePipeline.stop()
             self.inputArbitrator.stop()
+            _ = self.experimentMetricsRecorder.stop()
         }
+    }
+
+    public func resetExperimentMetrics() {
+        interactionQueue.async { [weak self] in
+            self?.experimentMetricsRecorder.reset()
+        }
+    }
+
+    public func startExperimentRecording(
+        duration: Double,
+        phase: CursorExperimentTaskPhase = .other
+    ) {
+        interactionQueue.async { [weak self] in
+            guard let self,
+                  self.hasStarted,
+                  self.permissionsManager.gate.cachedSnapshot.isCameraAuthorized else { return }
+            let workerStatus = self.visionWorker.statusSnapshot
+            let metadata = CursorExperimentRecordingMetadata(
+                settings: self.currentSettings.cursorExperiment,
+                calibrationProfile: self.currentCalibration,
+                initialCursorPosition: self.visibleCursorLocation(fallback: self.latestCursorLocation),
+                declaredTaskPhase: phase == .other ? nil : phase,
+                provider: workerStatus.activeProviderIdentifier,
+                providerAvailabilityReason: workerStatus.mediaPipeUnavailabilityReason,
+                camera: self.experimentCameraMetadata()
+            )
+            self.experimentMetricsRecorder.start(
+                duration: duration,
+                source: .camera,
+                metadata: metadata
+            )
+        }
+    }
+
+    public func stopExperimentRecording() {
+        interactionQueue.async { [weak self] in
+            _ = self?.experimentMetricsRecorder.stop()
+        }
+    }
+
+    public func exportExperimentMetrics(
+        completion: @escaping @Sendable (Result<URL, Error>) -> Void
+    ) {
+        interactionQueue.async { [weak self] in
+            guard let self,
+                  let recording = self.experimentMetricsRecorder.snapshot() else {
+                completion(.failure(CocoaError(.fileNoSuchFile)))
+                return
+            }
+            self.experimentExportQueue.async {
+                do {
+                    let directory = FileManager.default.urls(
+                        for: .applicationSupportDirectory,
+                        in: .userDomainMask
+                    )[0].appendingPathComponent("AuraMotion/Experiments/CursorRuns", isDirectory: true)
+                    try FileManager.default.createDirectory(
+                        at: directory,
+                        withIntermediateDirectories: true
+                    )
+                    let destination = directory.appendingPathComponent(
+                        "cursor_\(recording.sessionID).json"
+                    )
+                    let url = try CursorExperimentMetricsExporter.writeBundle(recording, to: destination)
+                    completion(.success(url))
+                } catch {
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+
+    private func experimentCameraMetadata() -> CursorExperimentCameraMetadata? {
+        guard let device = AVCaptureDevice.default(for: .video) else { return nil }
+        let dimensions = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+        let frameDuration = device.activeVideoMinFrameDuration
+        let nominalFPS = frameDuration.isValid && frameDuration.seconds.isFinite && frameDuration.seconds > 0
+            ? 1 / frameDuration.seconds
+            : nil
+        return CursorExperimentCameraMetadata(
+            name: device.localizedName,
+            width: Int(dimensions.width),
+            height: Int(dimensions.height),
+            nominalFPS: nominalFPS
+        )
+    }
+
+    private func recordExperimentFrame(
+        timestamp: Double,
+        sample: HandSample?,
+        inferenceDuration: TimeInterval,
+        mailboxWaitDuration: TimeInterval,
+        droppedFrames: Int
+    ) {
+        guard hasStarted, experimentMetricsRecorder.isRecording else { return }
+        let workerStatus = visionWorker.statusSnapshot
+        let visionDiagnostics = workerStatus.lastDiagnostics
+        let motionDiagnostics = cursorController.lastDiagnostics
+        let motion = cursorController.hasValidAnchorForLastSample &&
+                abs(motionDiagnostics.timestamp - timestamp) < 0.000_001
+            ? CursorExperimentMotionSample(diagnostics: motionDiagnostics)
+            : nil
+        let region = visionDiagnostics?.regionOfInterest ?? workerStatus.currentROI
+        let roi = CursorExperimentROI(
+            rect: region,
+            usedFullFrame: visionDiagnostics?.usedFullFrame ?? !workerStatus.roiEnabled,
+            fallbackReason: visionDiagnostics?.usedFullFrame == true && workerStatus.roiEnabled
+                ? visionDiagnostics?.detail
+                : nil
+        )
+        experimentMetricsRecorder.record(frame: CursorExperimentFrame(
+            timestamp: timestamp,
+            source: .camera,
+            sample: sample,
+            state: stateMachine.currentState,
+            inferenceDurationMilliseconds: inferenceDuration * 1000,
+            mailboxWaitMilliseconds: mailboxWaitDuration * 1000,
+            droppedFrames: droppedFrames,
+            roi: roi,
+            motion: motion
+        ))
     }
 
     public func togglePause() {
@@ -294,39 +429,140 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     public func updateSettings(_ newSettings: AppSettings) {
         interactionQueue.async { [weak self] in
             guard let self = self else { return }
-            let cursorSettingsChanged = self.currentSettings.cursorExperiment.normalized() != newSettings.cursorExperiment.normalized()
-            let cursorRebaseRequired = self.cursorController.requiresRebase(for: newSettings.cursorExperiment)
+            var updatedSettings = newSettings
+            updatedSettings.cursorExperiment = newSettings.cursorExperiment.normalized()
+            let oldCursorSettings = self.currentSettings.cursorExperiment.normalized()
+            let cursorSettingsChanged = oldCursorSettings != updatedSettings.cursorExperiment
+            let cursorRebaseRequired = self.cursorController.requiresRebase(for: updatedSettings.cursorExperiment)
+            let visionSettingsChanged = self.visionSettingsDiffer(
+                oldCursorSettings,
+                updatedSettings.cursorExperiment
+            ) || self.currentSettings.isCameraMirrored != updatedSettings.isCameraMirrored
+            let visionGeneration = visionSettingsChanged ? self.beginVisionReconfiguration() : nil
             var visibleCursor: CGPoint?
-            if cursorRebaseRequired {
+            if cursorRebaseRequired || visionSettingsChanged {
                 visibleCursor = self.visibleCursorLocation(fallback: self.latestCursorLocation)
                 // Drop queued pointer/drag work and release any held button
                 // before replacing the mapping configuration.
-                self.outputCoordinator.emergencyRelease()
-                self.cursorController.freeze(at: visibleCursor)
+                if !visionSettingsChanged {
+                    self.outputCoordinator.emergencyRelease()
+                }
+                if visionSettingsChanged {
+                    self.cursorController.freezeForVisionReconfiguration(at: visibleCursor)
+                } else if cursorRebaseRequired {
+                    self.cursorController.freeze(at: visibleCursor)
+                }
                 if self.stateMachine.currentState == .dragging || self.stateMachine.currentState == .pinchArmed {
                     self.stateMachine.reset()
                 }
             }
             if cursorSettingsChanged {
                 self.cursorController.reconfigure(
-                    newSettings.cursorExperiment,
+                    updatedSettings.cursorExperiment,
                     cursorPosition: visibleCursor ?? self.visibleCursorLocation(fallback: self.latestCursorLocation)
                 )
             }
-            if cursorRebaseRequired {
+            if cursorRebaseRequired && !visionSettingsChanged {
                 self.cursorController.setInteractionState(self.stateMachine.currentState, currentCursor: visibleCursor)
             }
             if cursorSettingsChanged {
-                self.inputArbitrator.setMotionPriorityEnabled(newSettings.cursorExperiment.hasCursorExperiments)
+                self.inputArbitrator.setMotionPriorityEnabled(updatedSettings.cursorExperiment.hasCursorExperiments)
             }
-            self.currentSettings = newSettings
-            self.visionWorker.isMirrored = newSettings.isCameraMirrored
-            self.stateMachine.isClutchEnabled = newSettings.isClutchEnabled
-            self.stateMachine.clutchDwellDuration = newSettings.clutchDwellTime
-            self.stateMachine.scrollDetector.scrollController.isInertiaEnabled = newSettings.scrollInertiaEnabled
-            self.stateMachine.isPalmSwipeEnabled = newSettings.isPalmSwipeEnabled
-            self.settingsRepository.saveSettings(newSettings)
+            self.currentSettings = updatedSettings
+            self.visionWorker.isMirrored = updatedSettings.isCameraMirrored
+            self.stateMachine.isClutchEnabled = updatedSettings.isClutchEnabled
+            self.stateMachine.clutchDwellDuration = updatedSettings.clutchDwellTime
+            self.stateMachine.scrollDetector.scrollController.isInertiaEnabled = updatedSettings.scrollInertiaEnabled
+            self.stateMachine.isPalmSwipeEnabled = updatedSettings.isPalmSwipeEnabled
+            AppLocalization.shared.setLanguage(updatedSettings.language)
+            self.settingsRepository.saveSettings(updatedSettings)
+            if let visionGeneration {
+                self.reconfigureVisionWorker(
+                    settings: updatedSettings.cursorExperiment,
+                    generation: visionGeneration,
+                    cursorPosition: visibleCursor
+                )
+            }
             self.publishHUDSnapshot()
+        }
+    }
+
+    private func visionSettingsDiffer(
+        _ old: CursorExperimentSettings,
+        _ new: CursorExperimentSettings
+    ) -> Bool {
+        old.visionROIEnabled != new.visionROIEnabled ||
+            old.mediaPipeBenchmarkEnabled != new.mediaPipeBenchmarkEnabled ||
+            ((old.visionROIEnabled || new.visionROIEnabled) &&
+                (old.roiScale != new.roiScale || old.roiMinimumSize != new.roiMinimumSize))
+    }
+
+    private func beginVisionReconfiguration() -> UInt64 {
+        visionConfigurationLock.lock()
+        defer { visionConfigurationLock.unlock() }
+        visionConfigurationGeneration &+= 1
+        visionReconfigurationPending = true
+        return visionConfigurationGeneration
+    }
+
+    private func isCurrentVisionReconfiguration(_ generation: UInt64) -> Bool {
+        visionConfigurationLock.lock()
+        defer { visionConfigurationLock.unlock() }
+        return visionConfigurationGeneration == generation && visionReconfigurationPending
+    }
+
+    private func visionGenerationForNewCallback() -> UInt64? {
+        visionConfigurationLock.lock()
+        defer { visionConfigurationLock.unlock() }
+        return visionReconfigurationPending ? nil : visionConfigurationGeneration
+    }
+
+    private func isCurrentVisionCallback(_ generation: UInt64) -> Bool {
+        visionConfigurationLock.lock()
+        defer { visionConfigurationLock.unlock() }
+        return !visionReconfigurationPending && visionConfigurationGeneration == generation
+    }
+
+    private func finishVisionReconfiguration(_ generation: UInt64) -> Bool {
+        visionConfigurationLock.lock()
+        defer { visionConfigurationLock.unlock() }
+        guard visionConfigurationGeneration == generation else { return false }
+        visionReconfigurationPending = false
+        return true
+    }
+
+    private var isVisionReconfigurationPending: Bool {
+        visionConfigurationLock.lock()
+        defer { visionConfigurationLock.unlock() }
+        return visionReconfigurationPending
+    }
+
+    private func reconfigureVisionWorker(
+        settings: CursorExperimentSettings,
+        generation: UInt64,
+        cursorPosition: CGPoint?
+    ) {
+        outputCoordinator.emergencyRelease { [weak self] in
+            guard let self, self.isCurrentVisionReconfiguration(generation) else { return }
+            self.visionWorker.reconfigure(settings) { [weak self] in
+                guard let self else { return }
+                self.interactionQueue.async {
+                    guard self.finishVisionReconfiguration(generation) else { return }
+                    self.continuityTracker.reset()
+                    self.latestSnapshotSample = nil
+                    self.latestRawCursorLocation = nil
+                    let visibleCursor = self.visibleCursorLocation(
+                        fallback: cursorPosition ?? self.latestCursorLocation
+                    )
+                    self.cursorController.rebaseAfterVisionReconfiguration(to: visibleCursor)
+                    self.cursorController.setInteractionState(
+                        self.stateMachine.currentState,
+                        currentCursor: visibleCursor
+                    )
+                    self.latestCursorLocation = visibleCursor ?? self.latestCursorLocation
+                    self.publishHUDSnapshot(force: true)
+                }
+            }
         }
     }
 
@@ -377,20 +613,21 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         inferenceDuration: TimeInterval,
         mailboxWaitDuration: TimeInterval
     ) {
+        guard let callbackGeneration = visionGenerationForNewCallback() else { return }
         let now = CACurrentMediaTime()
-        let pipelineLatency = now - carrier.hostPresentationTime
-
-        performanceTracker.recordInference(
-            duration: inferenceDuration,
-            mailboxWait: mailboxWaitDuration,
-            pipelineLatency: pipelineLatency,
-            isEstimated: carrier.isEstimatedTime,
-            timestamp: now
-        )
 
         // Dispatch all state transitions and coordinate mapping strictly to interactionQueue
         interactionQueue.async { [weak self] in
             guard let self = self else { return }
+            guard self.isCurrentVisionCallback(callbackGeneration), self.hasStarted else { return }
+
+            self.performanceTracker.recordInference(
+                duration: inferenceDuration,
+                mailboxWait: mailboxWaitDuration,
+                pipelineLatency: now - carrier.hostPresentationTime,
+                isEstimated: carrier.isEstimatedTime,
+                timestamp: now
+            )
 
             var processedSample: HandSample? = nil
             var mappedCursor: CGPoint? = nil
@@ -401,13 +638,12 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
                 processedSample = tracked
                 self.landmarkRecorder.record(sample: tracked)
 
-                if let tip = tracked.joint(.indexTip, minConfidence: 0.45) {
+                let hasReliableTip = tracked.joint(.indexTip, minConfidence: 0.45) != nil
+                if hasReliableTip || self.currentSettings.cursorExperiment.hasCursorExperiments {
                     mappedCursor = self.cursorController.processHand(tracked)
-                    if self.currentSettings.cursorExperiment.stableAnchorEnabled {
-                        self.latestRawCursorLocation = self.cursorController.lastDiagnostics.rawAnchor
-                    } else {
-                        self.latestRawCursorLocation = self.cursorController.mapper.mapToQuartzGlobal(visionPoint: tip)
-                    }
+                    self.latestRawCursorLocation = self.cursorController.hasValidAnchorForLastSample
+                        ? self.cursorController.lastDiagnostics.rawAnchor
+                        : nil
                 } else {
                     // Keep palm/shortcut detection alive without switching the cursor's
                     // tracking landmark, which caused large jumps on fingertip occlusion.
@@ -426,6 +662,14 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
                 mappedCursorLocation: mappedCursor,
                 currentEpoch: epoch,
                 isInjectionAllowed: canInject
+            )
+
+            self.recordExperimentFrame(
+                timestamp: carrier.hostPresentationTime,
+                sample: processedSample,
+                inferenceDuration: inferenceDuration,
+                mailboxWaitDuration: mailboxWaitDuration,
+                droppedFrames: self.capturePipeline.mailbox.droppedFrames
             )
 
             self.publishHUDSnapshot()
@@ -604,9 +848,10 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         snapshot.showHUD = currentSettings.showHUD
         snapshot.rawCursorLocation = latestRawCursorLocation
         snapshot.cursorExperimentStatus = cursorController.cursorExperimentStatus
-        snapshot.cursorDiagnostics = currentSettings.cursorExperiment.hasCursorExperiments
-            ? cursorController.lastDiagnostics
-            : nil
+        snapshot.cursorDiagnostics = cursorController.lastDiagnostics
+        snapshot.cursorExperimentSettings = currentSettings.cursorExperiment
+        snapshot.visionWorkerStatus = visionWorker.statusSnapshot
+        snapshot.isVisionReconfigurationPending = isVisionReconfigurationPending
         snapshot.clickFeedbackID = clickFeedbackID
         snapshot.clickFeedbackLocation = currentSettings.showClickFeedback ? clickFeedbackLocation : nil
         let publishedSnapshot = snapshot

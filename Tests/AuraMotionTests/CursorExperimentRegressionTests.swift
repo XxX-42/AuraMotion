@@ -93,8 +93,50 @@ final class CursorExperimentRegressionTests: XCTestCase {
             XCTAssertNil(run.summary.targetMetrics.cursorErrorAtClickP95Points.value)
             let anchor = try XCTUnwrap(run.summary.jointStatistics["finalPointerAnchor"])
             XCTAssertNil(anchor.stationaryObservations.sigmaX.value)
-            XCTAssertTrue(anchor.stationaryObservations.sigmaX.unavailableReason?.contains("explicitly labeled stationary") == true)
+            XCTAssertTrue(anchor.stationaryObservations.sigmaX.unavailableReason?.contains("labeled stationary") == true)
             XCTAssertEqual(run.summary.assumedPointerStateFrames, recording.frames.count)
+        }
+    }
+
+    func testDeclaredStationaryPurposeLabelsStationaryStatsWithoutCreatingTargets() throws {
+        let frames = (0..<8).map { index -> CursorExperimentFrame in
+            let timestamp = 20 + Double(index) / 30
+            let joints: [HandJointName: HandJoint] = [
+                .wrist: HandJoint(name: .wrist, position: CGPoint(x: 0.50, y: 0.20), confidence: 0.9),
+                .indexMCP: HandJoint(name: .indexMCP, position: CGPoint(x: 0.40, y: 0.40), confidence: 0.9),
+                .middleMCP: HandJoint(name: .middleMCP, position: CGPoint(x: 0.50, y: 0.40), confidence: 0.9),
+                .ringMCP: HandJoint(name: .ringMCP, position: CGPoint(x: 0.60, y: 0.40), confidence: 0.9),
+                .littleMCP: HandJoint(name: .littleMCP, position: CGPoint(x: 0.70, y: 0.40), confidence: 0.9),
+                .indexTip: HandJoint(name: .indexTip, position: CGPoint(x: 0.40, y: 0.70), confidence: 0.9)
+            ]
+            let sample = HandSample(
+                hostTimestamp: timestamp,
+                presentationTimeSeconds: timestamp,
+                isPresentationTimeEstimated: false,
+                joints: joints,
+                overallConfidence: 0.9,
+                estimatedHandedness: .right,
+                trackingID: 1
+            )
+            return CursorExperimentFrame(timestamp: timestamp, source: .synthetic, sample: sample, state: .pointer)
+        }
+        let recording = CursorExperimentRecording(
+            sessionID: "declared-stationary-purpose",
+            startTime: Date(timeIntervalSince1970: 0),
+            source: .synthetic,
+            durationLimitSeconds: 1,
+            capacity: frames.count,
+            metadata: CursorExperimentRecordingMetadata(declaredTaskPhase: .stationary),
+            frames: frames
+        )
+
+        let report = try CursorExperimentReplayEvaluator.evaluate(recording)
+        for run in report.runs {
+            let anchor = try XCTUnwrap(run.summary.jointStatistics["finalPointerAnchor"])
+            XCTAssertEqual(anchor.stationaryObservations.observationCount, frames.count)
+            XCTAssertNotNil(anchor.stationaryObservations.sigmaX.value)
+            XCTAssertTrue(run.rows.allSatisfy { $0.target == nil && $0.targetPhase == .stationary })
+            XCTAssertNil(run.summary.targetMetrics.targetErrorRMSPoints.value)
         }
     }
 

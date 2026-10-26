@@ -64,7 +64,7 @@ public struct RelativePointerMapping: Sendable {
 
         guard let handAnchor else {
             self.handAnchor = target
-            let initialCursor = valid(currentCursor) ?? cursorAnchor ?? target
+            let initialCursor = cursorAnchor ?? valid(currentCursor) ?? target
             cursorAnchor = clamp(initialCursor, to: displayBounds)
             lastMappedCursor = cursorAnchor
             lastHandDelta = .zero

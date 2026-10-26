@@ -115,12 +115,13 @@ final class LocalizationTests: XCTestCase {
             "Accessibility", "Active", "Calibration saved. Gesture control restored.",
             "Calibration — control paused",
             "Complete all six steps. If open and touching poses overlap, start again with your fingertips clearly separated for the open poses.",
-            "Current ROI:", "Cursor Experiments", "Denied", "Device Control & Data Access", "Disabled/Cooldown",
+            "Current ROI:", "Cursor Experiments", "Denied", "Device Control & Data Access", "Disabled",
+            "Disabled/Cooldown", "Enabled", "Fast movement", "Full-frame fallback",
             "Effective cursor strategy:", "Effective vision provider:", "English", "Granted",
             "Hold palm still to open commands", "Hold steady, then separate fingertips", "INITIALIZING",
             "Input control is blocked", "Keep only the index finger extended, with thumb comfortably apart.",
             "MediaPipe benchmark requested but unavailable:",
-            "MediaPipeTasksVision and a Hand Landmarker model are not included in this target.",
+            "MediaPipe Tasks Vision is unavailable on macOS: the current upstream binary provides iOS and iOS Simulator slices only, with no macOS slice.",
             "Mouse in use — gesture control waiting", "Move your hand to choose. Pinch to confirm.",
             "Open Pointer Test Surface", "Pointer Target & Drag Test",
             "Click three targets with the gesture pointer. Then test dragging inside this window.",
@@ -134,7 +135,9 @@ final class LocalizationTests: XCTestCase {
             "Simplified Chinese", "Start Recording", "Stop & Save Recording",
             "The hand moved too much. Hold steady and try this step again.",
             "Too much movement. Try holding still again.", "Use a wider sweep; the quick sweep must be faster than the slow one.",
-            "Vision ROI:", "Your finger contacts are distinguishable. Save to use these thresholds.",
+            "Vision ROI:", "Vision", "MediaPipe", "Sample purpose:", "Slow movement", "Stationary hold",
+            "Unlabelled", "Purpose labels the full sample; target metrics still need target coordinates.",
+            "Your finger contacts are distinguishable. Save to use these thresholds.",
             "{count} / 60 clear observations"
         ]
         let allKeys = requiredKeys.union(otherDictionaryKeys)
@@ -158,8 +161,8 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(L10n.tr("Reconfiguring vision provider…"), "正在重新配置视觉后端…")
         XCTAssertEqual(L10n.tr("MediaPipe benchmark requested but unavailable:"), "已请求 MediaPipe 对比实验，但当前不可用：")
         XCTAssertEqual(
-            L10n.tr("MediaPipeTasksVision and a Hand Landmarker model are not included in this target."),
-            "当前目标未包含 MediaPipeTasksVision 和 Hand Landmarker 模型。"
+            L10n.tr("MediaPipe Tasks Vision is unavailable on macOS: the current upstream binary provides iOS and iOS Simulator slices only, with no macOS slice."),
+            "MediaPipe Tasks Vision 在 macOS 上不可用：当前上游二进制仅提供 iOS 和 iOS 模拟器架构，不包含 macOS 架构。"
         )
     }
 

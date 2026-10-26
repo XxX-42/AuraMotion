@@ -127,7 +127,7 @@ final class FilterRuntimeTuningTests: XCTestCase {
         let filter = OneEuroFilter2D()
         let first = filter.filter(point: CGPoint(x: 100, y: 200), timestamp: 1)
 
-        XCTAssertEqual(filter.filter(point: CGPoint(x: .infinity, y: 210), timestamp: 1.016), first)
+        XCTAssertEqual(filter.filter(point: CGPoint(x: CGFloat.infinity, y: 210), timestamp: 1.016), first)
         XCTAssertEqual(filter.filter(point: CGPoint(x: 110, y: 210), timestamp: .nan), first)
 
         let afterInvalidInput = filter.filter(point: CGPoint(x: 110, y: 210), timestamp: 1.016)

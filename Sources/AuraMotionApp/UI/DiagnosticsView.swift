@@ -100,6 +100,60 @@ public struct DiagnosticsView: View {
                 .padding(4)
             }
 
+            GroupBox(label: Text(L10n.tr("Cursor Experiments"))) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top) {
+                        Text(L10n.tr("Effective cursor strategy:"))
+                        Spacer()
+                        Text(effectiveCursorStrategyLabel)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text(L10n.tr("Effective vision provider:"))
+                        Spacer()
+                        Text(effectiveProviderLabel)
+                    }
+                    HStack {
+                        Text(L10n.tr("Vision ROI:"))
+                        Spacer()
+                        Text(L10n.tr(snapshot?.visionWorkerStatus?.roiEnabled == true ? "Enabled" : "Disabled"))
+                    }
+                    if let roi = snapshot?.visionWorkerStatus?.currentROI {
+                        HStack(alignment: .top) {
+                            Text(L10n.tr("Current ROI:"))
+                            Spacer()
+                            Text(String(format: "x %.2f, y %.2f, w %.2f, h %.2f",
+                                        roi.origin.x, roi.origin.y, roi.width, roi.height))
+                                .monospacedDigit()
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    if snapshot?.isVisionReconfigurationPending == true {
+                        Text(L10n.tr("Reconfiguring vision provider…"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let status = snapshot?.visionWorkerStatus,
+                       status.requestedMediaPipeBenchmark,
+                       !status.mediaPipeBenchmarkAvailable,
+                       let reason = status.mediaPipeUnavailabilityReason {
+                        Text(L10n.tr("MediaPipe benchmark requested but unavailable:") + " " + L10n.tr(reason))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let diagnostics = snapshot?.visionWorkerStatus?.lastDiagnostics,
+                       snapshot?.visionWorkerStatus?.roiEnabled == true,
+                       diagnostics.usedFullFrame {
+                        Text(L10n.tr("ROI fallback:") + " " + L10n.tr(diagnostics.detail ?? "Full-frame fallback"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(4)
+            }
+
             // Opt-in Landmark Recording
             GroupBox(label: Text(L10n.tr("Landmark Recording (Privacy-Safe)"))) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -133,7 +187,7 @@ public struct DiagnosticsView: View {
             Spacer()
         }
         .padding(20)
-        .frame(width: 420, height: 640)
+        .frame(width: 420, height: 780)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("HUDSnapshotUpdated"))) { note in
             if let snap = note.object as? HUDSnapshot {
                 self.snapshot = snap
@@ -142,6 +196,29 @@ public struct DiagnosticsView: View {
                     if cursorHistory.count > 90 { cursorHistory.removeFirst(cursorHistory.count - 90) }
                 } else { cursorHistory.removeAll() }
             }
+        }
+    }
+
+    private var effectiveCursorStrategyLabel: String {
+        let settings = snapshot?.cursorExperimentSettings ?? CursorExperimentSettings()
+        guard settings.hasCursorExperiments else { return L10n.tr("Baseline") }
+        let anchor: String
+        switch settings.effectiveAnchorStrategy {
+        case .legacyTipFusion: anchor = "Legacy Tip Fusion"
+        case .indexMCP: anchor = "Index MCP"
+        case .palmCentroid: anchor = "Palm Centroid"
+        case .palmMCPFusion: anchor = "Palm MCP Fusion"
+        }
+        let mapping = settings.effectiveMappingMode == .relativeRebased ? "Relative Rebased" : "Absolute Legacy"
+        return "\(L10n.tr(anchor)) · \(L10n.tr(mapping))"
+    }
+
+    private var effectiveProviderLabel: String {
+        let identifier = snapshot?.visionWorkerStatus?.activeProviderIdentifier ?? "vision"
+        switch identifier {
+        case "mediapipe": return L10n.tr("MediaPipe")
+        case "vision": return L10n.tr("Vision")
+        default: return identifier
         }
     }
 

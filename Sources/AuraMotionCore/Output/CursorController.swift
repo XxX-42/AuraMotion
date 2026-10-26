@@ -13,6 +13,8 @@ public final class CursorController: @unchecked Sendable {
     private var pendingTransitionRebase = false
     private var pendingResumeMoveOverride: CGPoint?
     private var lastTimestamp: TimeInterval?
+    private var lastTrackingID: Int?
+    private var isAwaitingAnchorRebase = false
     public var mapper: CoordinateMapper
     private let handFusion = HandCursorFusion()
     private let baselineFusion = HandCursorFusion()
@@ -23,6 +25,7 @@ public final class CursorController: @unchecked Sendable {
     private var motionPhase: CursorMotionPhase = .frozen
 
     public private(set) var lastDiagnostics = CursorMotionDiagnostics()
+    public private(set) var hasValidAnchorForLastSample = false
 
     /// Most recent cursor target emitted by the mapping pipeline, used only as
     /// a fallback when Quartz cannot report the actual pointer location.
@@ -46,7 +49,6 @@ public final class CursorController: @unchecked Sendable {
             old.effectiveMappingMode != new.effectiveMappingMode ||
             old.stableAnchorEnabled != new.stableAnchorEnabled ||
             old.effectiveAnchorStrategy != new.effectiveAnchorStrategy ||
-            old.preset != new.preset ||
             old.adaptiveDeadzoneEnabled != new.adaptiveDeadzoneEnabled ||
             old.lowSpeedQuantizationEnabled != new.lowSpeedQuantizationEnabled ||
             old.velocityGainEnabled != new.velocityGainEnabled ||
@@ -69,6 +71,9 @@ public final class CursorController: @unchecked Sendable {
         pendingJump = nil
         lastOutput = preservedCursor
         lastTimestamp = nil
+        lastTrackingID = nil
+        isAwaitingAnchorRebase = false
+        hasValidAnchorForLastSample = false
         if transitionBias.isActive { pendingTransitionRebase = true }
 
         if experimentSettings.hasCursorExperiments {
@@ -188,6 +193,7 @@ public final class CursorController: @unchecked Sendable {
     /// Freezes cursor output at the actual visible location until an explicit rebase.
     public func freeze(at cursorPosition: CGPoint?) {
         guard experimentSettings.hasCursorExperiments else { return }
+        hasValidAnchorForLastSample = false
         let cursor = valid(cursorPosition) ?? lastOutput
         motionPhase = .frozen
         relativeMapping.freeze(at: cursor)
@@ -203,6 +209,7 @@ public final class CursorController: @unchecked Sendable {
     /// Starts a fresh hand anchor at the next frame while preserving the visible cursor.
     public func rebase(to cursorPosition: CGPoint?) {
         guard experimentSettings.hasCursorExperiments else { return }
+        hasValidAnchorForLastSample = false
         let cursor = valid(cursorPosition) ?? lastOutput
         motionPhase = phase(for: interactionState)
         filter.reset()
@@ -225,46 +232,98 @@ public final class CursorController: @unchecked Sendable {
         lastDiagnostics.phase = motionPhase
     }
 
+    /// Holds the current output while an external Vision configuration changes.
+    /// Baseline uses a one-frame transition bias after the switch; its steady-state
+    /// mapping and filter math remain unchanged.
+    public func freezeForVisionReconfiguration(at cursorPosition: CGPoint?) {
+        hasValidAnchorForLastSample = false
+        if experimentSettings.hasCursorExperiments {
+            freeze(at: cursorPosition)
+            return
+        }
+        let cursor = valid(cursorPosition) ?? lastOutput
+        if let cursor { lastOutput = cursor }
+        filter.reset()
+        lastRaw = nil
+        pendingJump = nil
+        lastTimestamp = nil
+        pendingTransitionRebase = cursor != nil
+    }
+
+    /// Rebinds to the physical cursor after the Vision worker has installed the
+    /// replacement provider and the previous tracking identity has been cleared.
+    public func rebaseAfterVisionReconfiguration(to cursorPosition: CGPoint?) {
+        hasValidAnchorForLastSample = false
+        if experimentSettings.hasCursorExperiments {
+            rebase(to: cursorPosition)
+            return
+        }
+        let cursor = valid(cursorPosition) ?? lastOutput
+        if let cursor { lastOutput = cursor }
+        filter.reset()
+        lastRaw = nil
+        pendingJump = nil
+        lastTimestamp = nil
+        pendingTransitionRebase = cursor != nil
+    }
+
     public var cursorExperimentStatus: String {
         guard experimentSettings.hasCursorExperiments else { return "Baseline" }
         return "anchor=\(experimentSettings.effectiveAnchorStrategy.rawValue);mapping=\(experimentSettings.effectiveMappingMode.rawValue);filter=\(experimentSettings.filterPreset.rawValue)"
     }
 
     private func applyTuning(_ profile: CalibrationProfile) {
-        filter.minCutoff = min(1.5, max(0.5, profile.cursorMinCutoff ?? 0.85))
-        filter.beta = min(0.025, max(0.004, profile.cursorMotionBeta ?? 0.008))
-        filter.dCutoff = 1.0
+        let configuration = CursorFilterConfiguration.resolve(
+            settings: CursorExperimentSettings(),
+            profile: profile,
+            phase: .pointer
+        )
+        filter.configure(
+            minCutoff: configuration.minCutoff,
+            beta: configuration.beta,
+            dCutoff: configuration.dCutoff
+        )
     }
 
     private func applyExperimentTuning() {
-        guard experimentSettings.optimizedOneEuroEnabled else {
-            applyTuning(mapper.profile)
-            return
-        }
-        if motionPhase == .drag && experimentSettings.separateDragTuningEnabled {
-            filter.minCutoff = experimentSettings.dragMinCutoff
-            filter.beta = experimentSettings.dragBeta
-        } else {
-            filter.minCutoff = experimentSettings.pointerMinCutoff
-            filter.beta = experimentSettings.pointerBeta
-        }
-        filter.dCutoff = experimentSettings.derivativeCutoff
+        let configuration = CursorFilterConfiguration.resolve(
+            settings: experimentSettings,
+            profile: mapper.profile,
+            phase: motionPhase
+        )
+        filter.configure(
+            minCutoff: configuration.minCutoff,
+            beta: configuration.beta,
+            dCutoff: configuration.dCutoff
+        )
     }
 
     public func processHand(_ sample: HandSample) -> CGPoint? {
         // Reset before fusion, so a long capture gap cannot discard a fresh anchor.
         if let time = lastTimestamp, sample.hostTimestamp - time > 0.25 { reset() }
+        if experimentSettings.hasCursorExperiments,
+           let lastTrackingID,
+           lastTrackingID != sample.trackingID {
+            isAwaitingAnchorRebase = true
+        }
+        lastTrackingID = sample.trackingID
         if experimentSettings.hasCursorExperiments && experimentSettings.stableAnchorEnabled {
             if let legacyAnchor = baselineFusion.update(sample) {
                 lastBaselineAbsoluteTarget = mapper.mapToQuartzGlobal(visionPoint: legacyAnchor)
             }
         }
         let pointerAnchor = handFusion.update(sample)
+        if experimentSettings.hasCursorExperiments && pointerAnchor == nil {
+            isAwaitingAnchorRebase = true
+        }
         return processIndexTip(normalizedPoint: pointerAnchor, timestamp: sample.hostTimestamp)
     }
 
     /// Maps normalized index-finger tip and applies 1€ adaptive filtering.
     public func processIndexTip(normalizedPoint: CGPoint?, timestamp: TimeInterval) -> CGPoint? {
+        hasValidAnchorForLastSample = normalizedPoint.map {
+            $0.x.isFinite && $0.y.isFinite && timestamp.isFinite
+        } ?? false
         guard experimentSettings.hasCursorExperiments else {
             return processBaselineIndexTip(normalizedPoint: normalizedPoint, timestamp: timestamp)
         }
@@ -306,6 +365,10 @@ public final class CursorController: @unchecked Sendable {
                 pendingJump = nil
             } else {
                 pendingJump = mapped
+                lastDiagnostics.timestamp = timestamp
+                lastDiagnostics.rawAnchor = absoluteMapped
+                lastDiagnostics.cursor = lastOutput ?? .zero
+                lastDiagnostics.phase = motionPhase
                 return lastOutput
             }
         } else { pendingJump = nil }
@@ -313,6 +376,11 @@ public final class CursorController: @unchecked Sendable {
 
         // 2. Smooth with 1€ filter
         let smoothed = filter.filter(point: mapped, timestamp: timestamp)
+        let previousOutput = lastOutput
+        let sampleDuration = timestamp - (lastDiagnostics.timestamp > 0 ? lastDiagnostics.timestamp : timestamp)
+        let speed = sampleDuration > 0 && sampleDuration.isFinite
+            ? Double(hypot(smoothed.x - (previousOutput?.x ?? smoothed.x), smoothed.y - (previousOutput?.y ?? smoothed.y))) / sampleDuration
+            : 0
 
         // A soft radial dead zone arrests resting tremor without rounding slow
         // motion into whole-pixel jumps. Deliberate movement accumulates naturally.
@@ -321,18 +389,45 @@ public final class CursorController: @unchecked Sendable {
             let dy = smoothed.y - previous.y
             let distance = hypot(dx, dy)
             let radius = min(4, max(0.5, mapper.profile.cursorRestRadius ?? 1.25))
-            if distance <= radius { return previous }
+            if distance <= radius {
+                lastDiagnostics.timestamp = timestamp
+                lastDiagnostics.rawAnchor = absoluteMapped
+                lastDiagnostics.filtered = smoothed
+                lastDiagnostics.cursor = previous
+                lastDiagnostics.speed = speed
+                lastDiagnostics.deadzone = radius
+                lastDiagnostics.gain = 1
+                lastDiagnostics.phase = motionPhase
+                return previous
+            }
             let fraction = (distance - radius) / distance
             let result = CGPoint(x: previous.x + dx * fraction, y: previous.y + dy * fraction)
             lastOutput = result
+            lastDiagnostics.timestamp = timestamp
+            lastDiagnostics.rawAnchor = absoluteMapped
+            lastDiagnostics.filtered = smoothed
+            lastDiagnostics.cursor = result
+            lastDiagnostics.speed = speed
+            lastDiagnostics.deadzone = radius
+            lastDiagnostics.gain = 1
+            lastDiagnostics.phase = motionPhase
             return result
         }
         lastOutput = smoothed
+        lastDiagnostics.timestamp = timestamp
+        lastDiagnostics.rawAnchor = absoluteMapped
+        lastDiagnostics.filtered = smoothed
+        lastDiagnostics.cursor = smoothed
+        lastDiagnostics.speed = 0
+        lastDiagnostics.deadzone = min(4, max(0.5, mapper.profile.cursorRestRadius ?? 1.25))
+        lastDiagnostics.gain = 1
+        lastDiagnostics.phase = motionPhase
         return smoothed
     }
 
     private func processExperimentalIndexTip(normalizedPoint: CGPoint?, timestamp: TimeInterval) -> CGPoint? {
         guard let rawPt = normalizedPoint else {
+            isAwaitingAnchorRebase = true
             updateFrozenDiagnostics(timestamp: timestamp)
             return lastOutput
         }
@@ -340,6 +435,11 @@ public final class CursorController: @unchecked Sendable {
         if let previous = lastTimestamp {
             guard timestamp > previous else { return lastOutput }
             if timestamp - previous > 0.25 { reset() }
+        }
+
+        if isAwaitingAnchorRebase {
+            isAwaitingAnchorRebase = false
+            rebase(to: lastOutput)
         }
 
         let absoluteMapped = mapper.mapToQuartzGlobal(visionPoint: rawPt)

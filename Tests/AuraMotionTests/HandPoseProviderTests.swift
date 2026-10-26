@@ -1,5 +1,6 @@
 import Foundation
 import CoreVideo
+import CoreMedia
 import XCTest
 @testable import AuraMotionCore
 
@@ -47,6 +48,78 @@ final class HandPoseProviderTests: XCTestCase {
         XCTAssertFalse(worker.statusSnapshot.mediaPipeBenchmarkAvailable)
         XCTAssertNotNil(worker.statusSnapshot.mediaPipeUnavailabilityReason)
         XCTAssertEqual(worker.statusSnapshot.configurationSequence, 1)
+    }
+
+    func testSlowProviderKeepsMailboxIngressToOneScheduledDrain() throws {
+        let provider = SlowFirstInferenceProvider()
+        let worker = VisionInferenceWorker(providerFactory: { _, _ in provider })
+        let mailbox = FrameMailbox()
+        let carrier = try makeCarrier(timestamp: 1)
+
+        mailbox.postFrame(carrier)
+        worker.processMailbox(mailbox: mailbox)
+        XCTAssertEqual(provider.firstInferenceEntered.wait(timeout: .now() + 2), .success)
+
+        for index in 0..<10_000 {
+            let next = SampleCarrier(
+                buffer: carrier.buffer,
+                hostPresentationTime: Double(index + 2),
+                isEstimatedTime: false
+            )
+            mailbox.postFrame(next)
+            worker.processMailbox(mailbox: mailbox)
+        }
+
+        XCTAssertEqual(worker.mailboxDrainSubmissionCountForTesting, 1)
+
+        let reconfigured = expectation(description: "provider reconfiguration completes")
+        worker.reconfigure(CursorExperimentSettings()) {
+            reconfigured.fulfill()
+        }
+        provider.resumeFirstInference.signal()
+        wait(for: [reconfigured], timeout: 3)
+
+        XCTAssertLessThanOrEqual(worker.mailboxDrainSubmissionCountForTesting, 2)
+        XCTAssertEqual(mailbox.droppedFrames, 9_999)
+    }
+
+    private func makeCarrier(timestamp: Double) throws -> SampleCarrier {
+        var pixelBuffer: CVPixelBuffer?
+        XCTAssertEqual(
+            CVPixelBufferCreate(kCFAllocatorDefault, 32, 32, kCVPixelFormatType_32BGRA, nil, &pixelBuffer),
+            kCVReturnSuccess
+        )
+        let image = try XCTUnwrap(pixelBuffer)
+        var formatDescription: CMVideoFormatDescription?
+        XCTAssertEqual(
+            CMVideoFormatDescriptionCreateForImageBuffer(
+                allocator: kCFAllocatorDefault,
+                imageBuffer: image,
+                formatDescriptionOut: &formatDescription
+            ),
+            noErr
+        )
+        var timing = CMSampleTimingInfo(
+            duration: .invalid,
+            presentationTimeStamp: CMTime(seconds: timestamp, preferredTimescale: 600),
+            decodeTimeStamp: .invalid
+        )
+        var sampleBuffer: CMSampleBuffer?
+        XCTAssertEqual(
+            CMSampleBufferCreateReadyWithImageBuffer(
+                allocator: kCFAllocatorDefault,
+                imageBuffer: image,
+                formatDescription: try XCTUnwrap(formatDescription),
+                sampleTiming: &timing,
+                sampleBufferOut: &sampleBuffer
+            ),
+            noErr
+        )
+        return SampleCarrier(
+            buffer: try XCTUnwrap(sampleBuffer),
+            hostPresentationTime: timestamp,
+            isEstimatedTime: false
+        )
     }
 }
 
@@ -137,6 +210,51 @@ private final class FakeHandPoseProvider: HandPoseProvider, @unchecked Sendable 
         isMirrored: Bool
     ) -> HandPoseProviderOutput {
         HandPoseProviderOutput(
+            sample: nil,
+            outcome: .noHand,
+            regionOfInterest: VisionROI.fullFrame,
+            usedFullFrame: true
+        )
+    }
+}
+
+private final class SlowFirstInferenceProvider: HandPoseProvider, @unchecked Sendable {
+    let identifier = "slow-test"
+    let firstInferenceEntered = DispatchSemaphore(value: 0)
+    let resumeFirstInference = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var inferenceCount = 0
+
+    var statusSnapshot: HandPoseProviderStatusSnapshot {
+        HandPoseProviderStatusSnapshot(
+            providerIdentifier: identifier,
+            roiEnabled: false,
+            currentROI: VisionROI.fullFrame
+        )
+    }
+
+    func configure(settings: CursorExperimentSettings) {}
+    func stop() {}
+    func reset() {}
+
+    func infer(
+        pixelBuffer: CVPixelBuffer,
+        hostTimestamp: TimeInterval,
+        presentationTime: Double,
+        isEstimatedTime: Bool,
+        trackingID: Int,
+        isMirrored: Bool
+    ) -> HandPoseProviderOutput {
+        lock.lock()
+        inferenceCount += 1
+        let shouldBlock = inferenceCount == 1
+        lock.unlock()
+
+        if shouldBlock {
+            firstInferenceEntered.signal()
+            _ = resumeFirstInference.wait(timeout: .now() + 3)
+        }
+        return HandPoseProviderOutput(
             sample: nil,
             outcome: .noHand,
             regionOfInterest: VisionROI.fullFrame,

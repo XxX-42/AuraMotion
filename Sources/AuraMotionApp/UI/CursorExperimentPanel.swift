@@ -10,6 +10,7 @@ struct CursorExperimentPanel: View {
     @State private var isExportingMetrics = false
     @State private var metricsStatusKey: String?
     @State private var recordingID = UUID()
+    @State private var samplePurpose: CursorExperimentTaskPhase = .other
 
     init(settings: Binding<CursorExperimentSettings>, isCameraAuthorized: Bool) {
         self._settings = settings
@@ -71,6 +72,10 @@ struct CursorExperimentPanel: View {
             }
 
             metricsPanel
+            Button(L10n.tr("Open Pointer Test Surface")) {
+                PointerValidationWindow.show()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -283,6 +288,17 @@ struct CursorExperimentPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
+                Picker(L10n.tr("Sample purpose:"), selection: $samplePurpose) {
+                    Text(L10n.tr("Stationary hold")).tag(CursorExperimentTaskPhase.stationary)
+                    Text(L10n.tr("Slow movement")).tag(CursorExperimentTaskPhase.slowMove)
+                    Text(L10n.tr("Fast movement")).tag(CursorExperimentTaskPhase.fastMove)
+                    Text(L10n.tr("Unlabelled")).tag(CursorExperimentTaskPhase.other)
+                }
+                Text(L10n.tr("Purpose labels the full sample; target metrics still need target coordinates."))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 HStack {
                     Button(L10n.tr("Reset Experiment Metrics")) {
                         AppEnvironment.shared.resetExperimentMetrics()
@@ -342,9 +358,10 @@ struct CursorExperimentPanel: View {
         metricsStatusKey = nil
         let sampleID = UUID()
         recordingID = sampleID
-        AppEnvironment.shared.startExperimentRecording(duration: 15)
+        AppEnvironment.shared.startExperimentRecording(duration: 15, phase: samplePurpose)
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
             guard recordingID == sampleID else { return }
+            AppEnvironment.shared.stopExperimentRecording()
             isRecordingSample = false
         }
     }

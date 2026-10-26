@@ -43,12 +43,8 @@ public struct SettingsView: View {
         .onChange(of: settings) { _, newSettings in
             AppEnvironment.shared.updateSettings(newSettings)
         }
-        .onChange(of: settings.language) { _, newLanguage in
-            AppLocalization.shared.setLanguage(newLanguage)
-        }
         .onAppear {
             settings = AppEnvironment.shared.currentSettings
-            AppLocalization.shared.setLanguage(settings.language)
             refreshPermissions()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

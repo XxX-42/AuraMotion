@@ -41,6 +41,7 @@ private struct ValidationTrial: Codable, Sendable {
     let overshootPoints: Double
     let elapsedMs: Double
     let maxStepPoints: Double
+    let targetReached: Bool
 }
 
 private struct ValidationRun: Codable, Sendable {
@@ -75,6 +76,8 @@ private final class PointerValidationModel: ObservableObject {
     private var maxStep = 0.0
     private var overshoot = 0.0
     private var dragging = false
+    private var dragDownPoint: CGPoint?
+    private var dragHasMoved = false
     private let fractions = [0.1, 0.9, 0.5]
     private let capacity = 4096
 
@@ -90,6 +93,8 @@ private final class PointerValidationModel: ObservableObject {
         started = Date()
         index = 0
         dragging = false
+        dragDownPoint = nil
+        dragHasMoved = false
         origin = nil
         previous = nil
         maxStep = 0
@@ -99,7 +104,12 @@ private final class PointerValidationModel: ObservableObject {
         running = true
     }
 
-    func stop() { running = false; dragging = false }
+    func stop() {
+        running = false
+        dragging = false
+        dragDownPoint = nil
+        dragHasMoved = false
+    }
 
     func observe(_ point: CGPoint, kind: String, gesture: Bool) {
         guard running, point.x.isFinite, point.y.isFinite else { return }
@@ -121,9 +131,11 @@ private final class PointerValidationModel: ObservableObject {
             if distance > 0 { overshoot = max(overshoot, ((point.x - goal.x) * dx + (point.y - goal.y) * dy) / distance) }
         }
         if mode == .targets, kind == "down" {
+            let error = hypot(point.x - goal.x, point.y - goal.y)
             trials.append(ValidationTrial(task: "target_acquisition", targetFraction: fractions[min(index, 2)],
-                errorPoints: hypot(point.x - goal.x, point.y - goal.y), overshootPoints: max(0, overshoot),
-                elapsedMs: (time - trialStarted) * 1000, maxStepPoints: maxStep))
+                errorPoints: error, overshootPoints: max(0, overshoot),
+                elapsedMs: (time - trialStarted) * 1000, maxStepPoints: maxStep,
+                targetReached: error <= 35))
             if index == 2 { finish(); return }
             index += 1
             origin = point
@@ -133,16 +145,37 @@ private final class PointerValidationModel: ObservableObject {
         } else if mode == .drag {
             if kind == "down", !dragging, hypot(point.x - goal.x, point.y - goal.y) <= 35 {
                 dragging = true
+                dragDownPoint = point
+                dragHasMoved = false
                 origin = point
                 previous = point
                 trialStarted = time
                 maxStep = 0
                 overshoot = 0
                 objectWillChange.send()
+            } else if kind == "drag", dragging, let dragDownPoint {
+                dragHasMoved = dragHasMoved || hypot(point.x - dragDownPoint.x, point.y - dragDownPoint.y) >= 8
             } else if kind == "up", dragging {
-                trials.append(ValidationTrial(task: "drag", targetFraction: 0.9,
-                    errorPoints: hypot(point.x - goal.x, point.y - goal.y), overshootPoints: max(0, overshoot),
-                    elapsedMs: (time - trialStarted) * 1000, maxStepPoints: maxStep))
+                let dragDistance = dragDownPoint.map { hypot(point.x - $0.x, point.y - $0.y) } ?? 0
+                guard dragHasMoved || dragDistance >= 8 else {
+                    dragging = false
+                    dragDownPoint = nil
+                    dragHasMoved = false
+                    origin = nil
+                    previous = nil
+                    maxStep = 0
+                    overshoot = 0
+                    statusKey = "Drag from the left circle to the right circle."
+                    objectWillChange.send()
+                    return
+                }
+                let error = hypot(point.x - goal.x, point.y - goal.y)
+                trials.append(ValidationTrial(task: "drag_attempt", targetFraction: 0.9,
+                    errorPoints: error, overshootPoints: max(0, overshoot),
+                    elapsedMs: (time - trialStarted) * 1000, maxStepPoints: maxStep,
+                    targetReached: error <= 35))
+                dragDownPoint = nil
+                dragHasMoved = false
                 finish()
             }
         }

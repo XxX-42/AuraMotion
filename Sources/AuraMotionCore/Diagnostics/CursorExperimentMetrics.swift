@@ -191,6 +191,9 @@ public struct CursorExperimentRecordingMetadata: Codable, Sendable, Equatable {
     public let calibrationProfile: CalibrationProfile
     public let calibrationProfileIsRecorded: Bool
     public let initialCursorPosition: CGPoint?
+    /// Optional user-declared purpose for an unsegmented camera recording.
+    /// This can identify stationary/slow/fast observations without inventing targets.
+    public let declaredTaskPhase: CursorExperimentTaskPhase?
     public let provider: String?
     public let providerAvailabilityReason: String?
     public let camera: CursorExperimentCameraMetadata?
@@ -200,6 +203,7 @@ public struct CursorExperimentRecordingMetadata: Codable, Sendable, Equatable {
         calibrationProfile: CalibrationProfile = .init(),
         calibrationProfileIsRecorded: Bool = true,
         initialCursorPosition: CGPoint? = nil,
+        declaredTaskPhase: CursorExperimentTaskPhase? = nil,
         provider: String? = nil,
         providerAvailabilityReason: String? = nil,
         camera: CursorExperimentCameraMetadata? = nil
@@ -208,6 +212,7 @@ public struct CursorExperimentRecordingMetadata: Codable, Sendable, Equatable {
         self.calibrationProfile = calibrationProfile
         self.calibrationProfileIsRecorded = calibrationProfileIsRecorded
         self.initialCursorPosition = initialCursorPosition.flatMap(Self.finitePoint)
+        self.declaredTaskPhase = declaredTaskPhase
         self.provider = provider
         self.providerAvailabilityReason = providerAvailabilityReason
         self.camera = camera
@@ -292,6 +297,7 @@ public final class CursorExperimentMetricsRecorder: @unchecked Sendable {
     private var droppedAtCapacity = 0
     private var rejectedSourceMismatch = 0
     private var active = false
+    private var stopSnapshotConsumed = false
 
     public init(capacity: Int = CursorExperimentMetricsRecorder.defaultCapacity) {
         self.capacity = min(Self.maximumCapacity, max(1, capacity))
@@ -326,6 +332,7 @@ public final class CursorExperimentMetricsRecorder: @unchecked Sendable {
         droppedAtCapacity = 0
         rejectedSourceMismatch = 0
         active = true
+        stopSnapshotConsumed = false
     }
 
     /// Returns true only when the frame was accepted into the ring.
@@ -361,8 +368,9 @@ public final class CursorExperimentMetricsRecorder: @unchecked Sendable {
     public func stop() -> CursorExperimentRecording? {
         lock.lock()
         defer { lock.unlock() }
-        guard !slots.isEmpty else { return nil }
+        guard !slots.isEmpty, !stopSnapshotConsumed else { return nil }
         active = false
+        stopSnapshotConsumed = true
         return makeSnapshot()
     }
 
@@ -386,6 +394,7 @@ public final class CursorExperimentMetricsRecorder: @unchecked Sendable {
         lastTimestamp = nil
         droppedAtCapacity = 0
         rejectedSourceMismatch = 0
+        stopSnapshotConsumed = true
     }
 
     private func makeSnapshot() -> CursorExperimentRecording {

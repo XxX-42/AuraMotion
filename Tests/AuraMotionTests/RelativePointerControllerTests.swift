@@ -80,4 +80,90 @@ final class RelativePointerControllerTests: XCTestCase {
         XCTAssertGreaterThan(moved.x, physicalCursor.x)
         XCTAssertLessThan(moved.y, physicalCursor.y)
     }
+
+    func testOptimizedMappingRebasesAcrossIdentityChangeAndInvalidAnchorSpan() throws {
+        let profile = CalibrationProfile(
+            activeRegion: CGRect(x: 0, y: 0, width: 1, height: 1),
+            displayBounds: CGRect(x: 0, y: 0, width: 1000, height: 800)
+        )
+        let controller = CursorController(profile: profile)
+        var settings = CursorExperimentSettings()
+        settings.stableAnchorEnabled = true
+        settings.relativeMappingEnabled = true
+        settings.mappingMode = .relativeRebased
+        settings.anchorStrategy = .indexMCP
+        let visible = CGPoint(x: 420, y: 310)
+        controller.reconfigure(settings, cursorPosition: visible)
+        controller.setInteractionState(.pointer, currentCursor: visible)
+
+        _ = try XCTUnwrap(controller.processHand(sample(time: 1.000, x: 0.40, trackingID: 1)))
+        let beforeIdentityChange = try XCTUnwrap(controller.processHand(
+            sample(time: 1.033, x: 0.45, trackingID: 1)
+        ))
+
+        let afterIdentityChange = try XCTUnwrap(controller.processHand(
+            sample(time: 1.066, x: 0.72, trackingID: 2)
+        ))
+        XCTAssertEqual(afterIdentityChange.x, beforeIdentityChange.x, accuracy: 1)
+        XCTAssertEqual(afterIdentityChange.y, beforeIdentityChange.y, accuracy: 1)
+
+        let identityFrame2 = try XCTUnwrap(controller.processHand(
+            sample(time: 1.099, x: 0.740, trackingID: 2)
+        ))
+        let identityFrame3 = try XCTUnwrap(controller.processHand(
+            sample(time: 1.132, x: 0.770, trackingID: 2)
+        ))
+        XCTAssertGreaterThan(identityFrame2.x, afterIdentityChange.x)
+        XCTAssertGreaterThan(identityFrame3.x, identityFrame2.x)
+        XCTAssertLessThan(identityFrame2.x - afterIdentityChange.x, 40)
+        XCTAssertLessThan(identityFrame3.x - identityFrame2.x, 40)
+
+        _ = try XCTUnwrap(controller.processHand(
+            sample(time: 1.165, x: 0.735, trackingID: 2, includeStableLandmarks: false)
+        ))
+        let reacquired = try XCTUnwrap(controller.processHand(
+            sample(time: 1.198, x: 0.90, trackingID: 2)
+        ))
+        XCTAssertEqual(reacquired.x, identityFrame3.x, accuracy: 1)
+        XCTAssertEqual(reacquired.y, identityFrame3.y, accuracy: 1)
+
+        let afterReacquisition = try XCTUnwrap(controller.processHand(
+            sample(time: 1.231, x: 0.920, trackingID: 2)
+        ))
+        XCTAssertGreaterThan(afterReacquisition.x, reacquired.x)
+        XCTAssertLessThan(afterReacquisition.x - reacquired.x, 40)
+    }
+
+    private func sample(
+        time: Double,
+        x: Double,
+        trackingID: Int,
+        includeStableLandmarks: Bool = true
+    ) -> HandSample {
+        var joints: [HandJointName: HandJoint] = [
+            .indexTip: HandJoint(name: .indexTip, position: CGPoint(x: x, y: 0.70), confidence: 0.9),
+            .thumbTip: HandJoint(name: .thumbTip, position: CGPoint(x: x - 0.18, y: 0.50), confidence: 0.9)
+        ]
+        if includeStableLandmarks {
+            let stablePoints: [(HandJointName, CGPoint)] = [
+                (.wrist, CGPoint(x: x - 0.08, y: 0.20)),
+                (.indexMCP, CGPoint(x: x, y: 0.40)),
+                (.middleMCP, CGPoint(x: x + 0.06, y: 0.40)),
+                (.ringMCP, CGPoint(x: x + 0.12, y: 0.39)),
+                (.littleMCP, CGPoint(x: x + 0.18, y: 0.38))
+            ]
+            for (name, point) in stablePoints {
+                joints[name] = HandJoint(name: name, position: point, confidence: 0.9)
+            }
+        }
+        return HandSample(
+            hostTimestamp: time,
+            presentationTimeSeconds: time,
+            isPresentationTimeEstimated: false,
+            joints: joints,
+            overallConfidence: 0.9,
+            estimatedHandedness: .right,
+            trackingID: trackingID
+        )
+    }
 }

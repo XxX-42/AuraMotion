@@ -52,6 +52,26 @@ public struct HUDView: View {
             .padding(.horizontal, 10)
 
             if !isCompact {
+                HStack(alignment: .top, spacing: 4) {
+                    Text(effectiveCursorStrategyLabel)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 2)
+                    Text(effectiveProviderLabel)
+                        .lineLimit(1)
+                }
+                .font(.system(size: 8, weight: .medium))
+                .foregroundColor(.white.opacity(0.62))
+                .padding(.horizontal, 10)
+
+                if snapshot?.isVisionReconfigurationPending == true {
+                    Text(L10n.tr("Reconfiguring vision provider…"))
+                        .font(.system(size: 8))
+                        .foregroundColor(.white.opacity(0.55))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                }
+
                 // Live Hand Skeleton Canvas
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
@@ -120,6 +140,29 @@ public struct HUDView: View {
         case .palmCandidate: return .yellow
         case .palmRest: return .teal
         case .palmSwipeLeft, .palmSwipeRight: return .green
+        }
+    }
+
+    private var effectiveCursorStrategyLabel: String {
+        let settings = snapshot?.cursorExperimentSettings ?? CursorExperimentSettings()
+        guard settings.hasCursorExperiments else { return L10n.tr("Baseline") }
+        let anchor: String
+        switch settings.effectiveAnchorStrategy {
+        case .legacyTipFusion: anchor = "Legacy Tip Fusion"
+        case .indexMCP: anchor = "Index MCP"
+        case .palmCentroid: anchor = "Palm Centroid"
+        case .palmMCPFusion: anchor = "Palm MCP Fusion"
+        }
+        let mapping = settings.effectiveMappingMode == .relativeRebased ? "Relative Rebased" : "Absolute Legacy"
+        return "\(L10n.tr(anchor)) · \(L10n.tr(mapping))"
+    }
+
+    private var effectiveProviderLabel: String {
+        let identifier = snapshot?.visionWorkerStatus?.activeProviderIdentifier ?? "vision"
+        switch identifier {
+        case "mediapipe": return L10n.tr("MediaPipe")
+        case "vision": return L10n.tr("Vision")
+        default: return identifier
         }
     }
 }

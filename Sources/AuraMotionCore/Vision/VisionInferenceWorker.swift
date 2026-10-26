@@ -60,6 +60,9 @@ public final class VisionInferenceWorker: @unchecked Sendable {
     private var requestedConfigurationSequence: UInt64 = 0
     private var mirroredSnapshot = true
     private var statusStorage: VisionWorkerStatusSnapshot
+    private var isMailboxDrainScheduledOrRunning = false
+    private var mailboxWakeRequested = false
+    private var mailboxDrainSubmissionCount: UInt64 = 0
 
     public let activeRevision: Int
     public weak var delegate: VisionInferenceWorkerDelegate?
@@ -83,6 +86,12 @@ public final class VisionInferenceWorker: @unchecked Sendable {
         stateLock.lock()
         defer { stateLock.unlock() }
         return statusStorage
+    }
+
+    var mailboxDrainSubmissionCountForTesting: UInt64 {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return mailboxDrainSubmissionCount
     }
 
     public convenience init() {
@@ -149,12 +158,47 @@ public final class VisionInferenceWorker: @unchecked Sendable {
 
     /// Triggers the worker to evaluate the latest waiting frame from the mailbox.
     public func processMailbox(mailbox: FrameMailbox) {
+        stateLock.lock()
+        mailboxWakeRequested = true
+        guard !isMailboxDrainScheduledOrRunning else {
+            stateLock.unlock()
+            return
+        }
+        isMailboxDrainScheduledOrRunning = true
+        mailboxWakeRequested = false
+        stateLock.unlock()
+        enqueueMailboxDrain(mailbox: mailbox)
+    }
+
+    private func enqueueMailboxDrain(mailbox: FrameMailbox) {
+        stateLock.lock()
+        mailboxDrainSubmissionCount &+= 1
+        stateLock.unlock()
+
         visionQueue.async { [weak self] in
-            guard let self,
-                  let carrier = mailbox.beginNextInference() else {
-                return
+            guard let self else { return }
+            if let carrier = mailbox.beginNextInference() {
+                self.executeInference(carrier: carrier, mailbox: mailbox)
             }
-            self.executeInference(carrier: carrier, mailbox: mailbox)
+            self.finishMailboxDrain(mailbox: mailbox)
+        }
+    }
+
+    private func finishMailboxDrain(mailbox: FrameMailbox) {
+        stateLock.lock()
+        let shouldDrainAgain = mailboxWakeRequested
+        if shouldDrainAgain {
+            mailboxWakeRequested = false
+        } else {
+            isMailboxDrainScheduledOrRunning = false
+        }
+        stateLock.unlock()
+
+        // Keep one scheduled/running flag set across the handoff. A capture
+        // wake arriving here either sets mailboxWakeRequested before this lock,
+        // or sees the flag clear afterward and schedules the next drain itself.
+        if shouldDrainAgain {
+            enqueueMailboxDrain(mailbox: mailbox)
         }
     }
 
