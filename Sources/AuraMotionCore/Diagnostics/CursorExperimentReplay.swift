@@ -233,6 +233,23 @@ public enum CursorExperimentReplayEvaluator {
         return report(for: recording, runs: [baseline, optimized])
     }
 
+    /// Replays the same trace through the baseline configuration and an explicit
+    /// optimized configuration. This is intended for parameter sweeps; the default
+    /// evaluator remains tied to the named Baseline and Optimized presets.
+    public static func evaluate(
+        _ recording: CursorExperimentRecording,
+        optimizedSettings: CursorExperimentSettings
+    ) throws -> CursorExperimentReplayReport {
+        guard recording.schemaVersion == CursorExperimentRecording.currentSchemaVersion else {
+            throw CursorExperimentReplayError.unsupportedSchema(recording.schemaVersion)
+        }
+        guard !recording.frames.isEmpty else { throw CursorExperimentReplayError.emptyRecording }
+
+        let baseline = evaluate(recording, mode: .baseline)
+        let optimized = evaluate(recording, mode: .optimized, settingsOverride: optimizedSettings)
+        return report(for: recording, runs: [baseline, optimized])
+    }
+
     /// Adds controlled module groups to the same recorded trace for tuning studies.
     /// The normal camera A/B export remains the two-run Baseline/Optimized report.
     public static func evaluateSweep(_ recording: CursorExperimentRecording) throws -> CursorExperimentReplayReport {
@@ -260,9 +277,10 @@ public enum CursorExperimentReplayEvaluator {
 
     private static func evaluate(
         _ recording: CursorExperimentRecording,
-        mode: CursorExperimentReplayMode
+        mode: CursorExperimentReplayMode,
+        settingsOverride: CursorExperimentSettings? = nil
     ) -> CursorExperimentReplayRun {
-        let settings = settings(for: mode)
+        let settings = settingsOverride?.normalized() ?? settings(for: mode)
 
         let profile = recording.metadata.calibrationProfile
         let center = CGPoint(x: profile.displayBounds.midX, y: profile.displayBounds.midY)

@@ -14,12 +14,13 @@ The AppEnvironment hook should call `record(frame:)` on the existing interaction
 swift run CursorReplay --synthetic --output /tmp/cursor-replay.csv
 swift run CursorReplay --synthetic --sweep --output /tmp/cursor-replay-sweep.json
 swift run CursorReplay --input /path/to/recording.json --output /tmp/replay.json
+swift run CursorReplay --input /path/to/recording.json --settings /path/to/cursor-settings.json --output /tmp/tuned-replay.json
 swift run CursorReplay --input /path/to/old-session.json --source camera --output /tmp/replay.csv
 ```
 
-Old `LandmarkRecorder` session files did not store a source; the CLI therefore requires an explicit `--source` for them. New recordings and live export bundles carry their source and can be replayed directly. JSON report output includes metric units and reasons for unavailable values; the live bundle additionally includes the original trace.
+Old `LandmarkRecorder` session files did not store a source; the CLI therefore requires an explicit `--source` for them. New recordings and live export bundles carry their source and can be replayed directly. JSON report output includes metric units and reasons for unavailable values; the live bundle additionally includes the original trace. `--settings` accepts a JSON object of `CursorExperimentSettings` fields, overlays them on Optimized defaults, and applies the result only to the optimized replay; the baseline stays unchanged. It cannot be combined with `--sweep`; the default evaluator always uses the named Baseline and Optimized presets.
 
-`--sweep` replays one trace as Baseline, stable-anchor plus relative mapping, those features plus optimized filtering/drag tuning/quantization, the same set plus adaptive deadzone, the six-module Optimized preset, and the full seven-module variant with velocity gain enabled. The Optimized preset leaves velocity gain off because the deterministic ablation produced substantially worse target and slow-movement errors with gain enabled. It remains an independent toggle for custom evaluation. Standard camera A/B bundles still contain only Baseline and Optimized.
+`--sweep` replays one trace as Baseline, stable-anchor plus relative mapping, those features plus optimized filtering/drag tuning/quantization, the same set plus adaptive deadzone, the six-module Optimized preset, and the full seven-module variant with velocity gain enabled. The current experimental Optimized candidate uses a pointer cutoff of 0.85, beta 0.010, 4 px rest deadzone, and 140 px/s deadzone velocity; velocity gain, ROI, and MediaPipe remain off. Velocity gain stays an independent toggle because the deterministic ablation produced substantially worse target and slow-movement errors with it enabled. On the measured camera trace, the candidate modestly reduced P95 and RMS cursor step but increased radial sigma, so this is a balanced experimental preset rather than a universal precision or stability win. Standard camera A/B bundles still contain only Baseline and Optimized.
 
 ## Interpretation
 

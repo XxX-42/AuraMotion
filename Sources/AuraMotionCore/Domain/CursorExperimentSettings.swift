@@ -7,7 +7,7 @@ public enum CursorFilterPreset: String, Codable, Sendable, CaseIterable { case l
 public enum CursorMotionPhase: String, Codable, Sendable { case pointer, drag, frozen }
 
 /// One configuration carried by AppSettings; disabled modules must use the original path.
-/// Defaults deliberately preserve the upstream baseline. Confinement is the existing interaction queue.
+/// New instances select Baseline with all experiment modules disabled; numeric tuning defaults seed the measured Optimized candidate. Confinement is the existing interaction queue.
 public struct CursorExperimentSettings: Codable, Sendable, Equatable {
     public var preset: CursorExperimentPreset = .baseline
     public var stableAnchorEnabled = false
@@ -22,14 +22,14 @@ public struct CursorExperimentSettings: Codable, Sendable, Equatable {
     public var anchorStrategy: PointerAnchorStrategy = .palmMCPFusion
     public var mappingMode: CursorMappingMode = .relativeRebased
     public var filterPreset: CursorFilterPreset = .precision
-    public var pointerMinCutoff: Double = 0.50
-    public var pointerBeta: Double = 0.015
+    public var pointerMinCutoff: Double = 0.85
+    public var pointerBeta: Double = 0.010
     public var dragMinCutoff: Double = 1.1
     public var dragBeta: Double = 0.018
     public var derivativeCutoff: Double = 1.0
     public var restDeadzone: Double = 4.0
     public var movingDeadzone: Double = 0.25
-    public var deadzoneVelocity: Double = 90
+    public var deadzoneVelocity: Double = 140
     public var quantizationSpeedThreshold: Double = 60
     public var precisionGain: Double = 0.4
     public var normalGain: Double = 1.0
@@ -62,6 +62,13 @@ public struct CursorExperimentSettings: Codable, Sendable, Equatable {
         velocityGainEnabled = false
         separateDragTuningEnabled = enabled
         optimizedOneEuroEnabled = enabled
+        if enabled {
+            filterPreset = .precision
+            pointerMinCutoff = 0.85
+            pointerBeta = 0.010
+            restDeadzone = 4.0
+            deadzoneVelocity = 140
+        }
         // Vision ROI needs independent measured opt-in; MediaPipe never runs by default.
         visionROIEnabled = false
         mediaPipeBenchmarkEnabled = false
@@ -72,14 +79,14 @@ public struct CursorExperimentSettings: Codable, Sendable, Equatable {
         func clamp(_ value: Double, _ low: Double, _ high: Double, _ fallback: Double) -> Double {
             min(high, max(low, value.isFinite ? value : fallback))
         }
-        result.pointerMinCutoff = clamp(pointerMinCutoff, 0.1, 10, 0.5)
-        result.pointerBeta = clamp(pointerBeta, 0, 0.1, 0.015)
+        result.pointerMinCutoff = clamp(pointerMinCutoff, 0.1, 10, 0.85)
+        result.pointerBeta = clamp(pointerBeta, 0, 0.1, 0.010)
         result.dragMinCutoff = clamp(dragMinCutoff, 0.1, 10, 1.1)
         result.dragBeta = clamp(dragBeta, 0, 0.1, 0.018)
         result.derivativeCutoff = clamp(derivativeCutoff, 0.1, 10, 1)
         result.restDeadzone = clamp(restDeadzone, 0, 12, 4)
         result.movingDeadzone = clamp(movingDeadzone, 0, result.restDeadzone, 0.25)
-        result.deadzoneVelocity = clamp(deadzoneVelocity, 1, 3000, 90)
+        result.deadzoneVelocity = clamp(deadzoneVelocity, 1, 3000, 140)
         result.quantizationSpeedThreshold = clamp(quantizationSpeedThreshold, 0, 1000, 60)
         result.precisionGain = clamp(precisionGain, 0.05, 3, 0.4)
         result.normalGain = clamp(normalGain, result.precisionGain, 4, 1)

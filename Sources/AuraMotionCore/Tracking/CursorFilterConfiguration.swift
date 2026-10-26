@@ -44,11 +44,11 @@ public struct CursorFilterConfiguration: Sendable, Equatable {
         case .legacy:
             return baseline
         case .precision:
-            return Self(minCutoff: 0.5, beta: 0.015, dCutoff: 1.0)
+            return Self(minCutoff: 0.85, beta: 0.010, dCutoff: 1.0)
         case .custom:
             return Self(
-                minCutoff: bounded(settings.pointerMinCutoff, range: 0.1...10, fallback: 0.5),
-                beta: bounded(settings.pointerBeta, range: 0...0.1, fallback: 0.015),
+                minCutoff: bounded(settings.pointerMinCutoff, range: 0.1...10, fallback: 0.85),
+                beta: bounded(settings.pointerBeta, range: 0...0.1, fallback: 0.010),
                 dCutoff: bounded(settings.derivativeCutoff, range: 0.1...10, fallback: 1.0)
             )
         }

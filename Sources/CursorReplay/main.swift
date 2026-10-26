@@ -5,6 +5,7 @@ import Foundation
 private struct Options {
     var input: URL?
     var output: URL?
+    var settings: URL?
     var source: CursorExperimentSource?
     var synthetic = false
     var sweep = false
@@ -37,7 +38,13 @@ private enum CursorReplayCommand {
 
             let report: CursorExperimentReplayReport
             if options.sweep {
+                guard options.settings == nil else {
+                    throw CLIError.usage("Use either --sweep or --settings, not both.")
+                }
                 report = try CursorExperimentReplayEvaluator.evaluateSweep(recording)
+            } else if let settingsURL = options.settings {
+                let settings = try loadSettings(from: settingsURL)
+                report = try CursorExperimentReplayEvaluator.evaluate(recording, optimizedSettings: settings)
             } else {
                 report = try CursorExperimentReplayEvaluator.evaluate(recording)
             }
@@ -71,6 +78,10 @@ private enum CursorReplayCommand {
                 index += 1
                 guard index < arguments.count else { throw CLIError.usage("--output needs a file path.") }
                 options.output = URL(fileURLWithPath: arguments[index])
+            case "--settings":
+                index += 1
+                guard index < arguments.count else { throw CLIError.usage("--settings needs a JSON file path.") }
+                options.settings = URL(fileURLWithPath: arguments[index])
             case "--source":
                 index += 1
                 guard index < arguments.count,
@@ -92,16 +103,42 @@ private enum CursorReplayCommand {
         return options
     }
 
+    private static func loadSettings(from url: URL) throws -> CursorExperimentSettings {
+        let data = try Data(contentsOf: url)
+        guard let overrides = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CLIError.usage("--settings must contain a JSON object of CursorExperimentSettings fields.")
+        }
+
+        var optimizedDefaults = CursorExperimentSettings()
+        optimizedDefaults.applyPreset(.optimized)
+        let encodedDefaults = try JSONEncoder().encode(optimizedDefaults)
+        guard var merged = try JSONSerialization.jsonObject(with: encodedDefaults) as? [String: Any] else {
+            throw CLIError.usage("Could not encode Optimized defaults for --settings.")
+        }
+        let unknownKeys = Set(overrides.keys).subtracting(merged.keys)
+        guard unknownKeys.isEmpty else {
+            throw CLIError.usage("Unknown --settings field(s): \(unknownKeys.sorted().joined(separator: ", ")).")
+        }
+        for (key, value) in overrides { merged[key] = value }
+
+        let mergedData = try JSONSerialization.data(withJSONObject: merged)
+        return try JSONDecoder().decode(CursorExperimentSettings.self, from: mergedData).normalized()
+    }
+
     private static func printHelp(to handle: FileHandle = .standardOutput) {
         let help = """
         Usage:
           swift run CursorReplay --synthetic --output /tmp/cursor-replay.csv [--fps 60] [--sweep]
           swift run CursorReplay --input session.json --source camera --output report.json
+          swift run CursorReplay --input recording.json --settings cursor-settings.json --output report.json
 
         New CursorExperimentRecording JSON includes its source and needs no --source.
         Legacy LandmarkRecorder JSON has no source label; pass --source camera or
         --source synthetic explicitly. CSV contains baseline and optimized runs in
         one file. JSON includes rows, measured summaries, and explicit unavailable reasons.
+        --settings uses JSON CursorExperimentSettings fields over Optimized defaults for
+        the optimized replay only; baseline remains unchanged. The option cannot be combined
+        with --sweep. Omitted fields retain their Optimized default values.
         Synthetic traces are deterministic model checks; they do not report real
         inference time, CPU, or memory.
         """

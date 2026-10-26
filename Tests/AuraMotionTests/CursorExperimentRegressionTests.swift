@@ -89,6 +89,29 @@ final class CursorExperimentRegressionTests: XCTestCase {
         XCTAssertTrue(fullSeven.velocityGainEnabled)
     }
 
+    func testExplicitSettingsOverrideAppliesOnlyToOptimizedReplay() throws {
+        let recording = CursorExperimentSyntheticTrace.makeRecording(fps: 10)
+        var custom = CursorExperimentSettings()
+        custom.applyPreset(.optimized)
+        custom.preset = .custom
+        custom.filterPreset = .custom
+        custom.pointerMinCutoff = 0.85
+        custom.pointerBeta = 0.010
+        custom.restDeadzone = 5
+        custom.deadzoneVelocity = 140
+
+        let report = try CursorExperimentReplayEvaluator.evaluate(recording, optimizedSettings: custom)
+        let baseline = try XCTUnwrap(report.runs.first { $0.mode == .baseline })
+        let optimized = try XCTUnwrap(report.runs.first { $0.mode == .optimized })
+
+        XCTAssertFalse(baseline.settings.hasCursorExperiments)
+        XCTAssertEqual(optimized.settings, custom.normalized())
+        XCTAssertEqual(optimized.settings.pointerMinCutoff, 0.85, accuracy: 0.0001)
+        XCTAssertEqual(optimized.settings.pointerBeta, 0.010, accuracy: 0.0001)
+        XCTAssertEqual(optimized.settings.restDeadzone, 5, accuracy: 0.0001)
+        XCTAssertEqual(optimized.settings.deadzoneVelocity, 140, accuracy: 0.0001)
+    }
+
     func testRecorderUsesBoundedRingAndRejectsMixedSources() throws {
         let recorder = CursorExperimentMetricsRecorder(capacity: 3)
         recorder.start(duration: 30, source: .synthetic)

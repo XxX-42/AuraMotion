@@ -30,7 +30,7 @@ final class FilterRuntimeTuningTests: XCTestCase {
         settings.pointerBeta = 0.09
 
         let precisionPointer = CursorFilterConfiguration.resolve(settings: settings, profile: profile, phase: .pointer)
-        XCTAssertEqual(precisionPointer, CursorFilterConfiguration(minCutoff: 0.5, beta: 0.015, dCutoff: 1))
+        XCTAssertEqual(precisionPointer, CursorFilterConfiguration(minCutoff: 0.85, beta: 0.010, dCutoff: 1))
         let precisionDragWithoutToggle = CursorFilterConfiguration.resolve(settings: settings, profile: profile, phase: .drag)
         XCTAssertEqual(precisionDragWithoutToggle, precisionPointer)
 
@@ -109,7 +109,7 @@ final class FilterRuntimeTuningTests: XCTestCase {
 
         XCTAssertEqual(
             CursorFilterConfiguration.resolve(settings: settings, profile: profile, phase: .pointer),
-            CursorFilterConfiguration(minCutoff: 0.5, beta: 0.015, dCutoff: 0.1)
+            CursorFilterConfiguration(minCutoff: 0.85, beta: 0.010, dCutoff: 0.1)
         )
         XCTAssertEqual(
             CursorFilterConfiguration.resolve(settings: settings, profile: profile, phase: .drag),
