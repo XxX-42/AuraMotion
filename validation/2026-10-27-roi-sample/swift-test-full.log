@@ -1,0 +1,512 @@
+Building for debugging...
+[Computing dependencies]
+[Using on-disk description]
+[3 / 23]
+[5 / 24] AuraAtomics
+[5 / 25] AuraAtomics
+[6 / 24] AuraAtomics
+[7 / 24] AuraAtomics
+[7 / 24] AuraMotionCore
+[7 / 25] AuraMotionCore
+[8 / 34]
+[10 / 34] AuraMotionCore
+[12 / 34] AuraMotionCore
+[14 / 34] AuraMotionCore
+[14 / 33] AuraMotionCore
+[14 / 30] AuraMotionCore
+[16 / 30] AuraMotionCore
+[18 / 30] AuraMotionCore
+<workspace>/Sources/AuraMotionCore/App/AppEnvironment.swift:259:61: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+255 |             switch result {
+256 |             case .success:
+257 |                 self.capturePipeline.start { startResult in
+    |                                            |- note: 'self' implicitly strongly captured here
+    |                                            `- note: add 'self' as a capture list item to silence
+258 |                     if case .failure(let error) = startResult {
+259 |                         self.interactionQueue.async { [weak self] in
+    |                                                             |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+    |                                                             `- note: explicitly assign the capture list item to silence
+260 |                             self?.captureStartRequested = false
+261 |                             self?.publishHUDSnapshot(force: true)
+
+[#ImplicitStrongCapture]: <https://docs.swift.org/compiler/documentation/diagnostics/implicit-strong-capture>
+[18 / 33] CursorReplay-product
+[18 / 31] AuraMotionCore
+[20 / 33] CursorReplay-product
+[21 / 33] AuraMotion-product
+[22 / 35] CursorReplay-product
+[23 / 44] AuraMotion-product
+[24 / 44] CursorReplay-product
+[28 / 45] AuraMotion-product
+[29 / 45] AuraMotion-product
+[32 / 45] AuraMotion-product
+[33 / 47] AuraMotion-product
+[34 / 47] AuraMotion-product
+[35 / 47] AuraMotion-product
+[36 / 47] AuraMotion-product
+[37 / 46] AuraMotion-product
+[38 / 46] CursorReplay-product
+[39 / 46] AuraMotionCore-product
+[39 / 46] CursorReplay-product
+[41 / 46] AuraMotionTests-product
+[43 / 55] AuraMotionTests-product
+[44 / 55] AuraMotionTests-product
+[47 / 55] AuraMotionTests-product
+[47 / 54] AuraMotionTests-product
+[47 / 55] AuraMotionTests-product
+[50 / 55] AuraMotionTests-product
+[52 / 55] AuraMotionTests-product
+[54 / 55] AuraMotionTests-product
+[55 / 56] AuraMotionTests-product
+[56 / 56] AuraMotionTests-product
+[57 / 57] AuraMotion-product
+[58 / 58] AuraMotion-product
+[60 / 60] CursorReplay-product
+Build complete! (151.46秒)
+Test Suite 'All tests' started at 2026-10-27 02:42:45.627.
+Test Suite 'AuraMotionTests.xctest' started at 2026-10-27 02:42:45.654.
+Test Suite 'CommandMenuTests' started at 2026-10-27 02:42:45.654.
+Test Case '-[AuraMotionTests.CommandMenuTests testBoundaryTremorDoesNotChangeSelectedTile]' started.
+Test Case '-[AuraMotionTests.CommandMenuTests testBoundaryTremorDoesNotChangeSelectedTile]' passed (0.074 seconds).
+Test Case '-[AuraMotionTests.CommandMenuTests testCancelAndTimeoutCannotExecuteCommands]' started.
+Test Case '-[AuraMotionTests.CommandMenuTests testCancelAndTimeoutCannotExecuteCommands]' passed (0.005 seconds).
+Test Case '-[AuraMotionTests.CommandMenuTests testKeyboardCommandsReleaseModifiers]' started.
+Test Case '-[AuraMotionTests.CommandMenuTests testKeyboardCommandsReleaseModifiers]' passed (0.003 seconds).
+Test Case '-[AuraMotionTests.CommandMenuTests testNewClickCommandsUseCapturedTargetAndDoNotMoveCursor]' started.
+Test Case '-[AuraMotionTests.CommandMenuTests testNewClickCommandsUseCapturedTargetAndDoNotMoveCursor]' passed (0.005 seconds).
+Test Case '-[AuraMotionTests.CommandMenuTests testNineMenuCellsMatchDisplayedOrder]' started.
+Test Case '-[AuraMotionTests.CommandMenuTests testNineMenuCellsMatchDisplayedOrder]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.CommandMenuTests testPointThenPinchSelectsOnceAndPreservesOriginalTarget]' started.
+Test Case '-[AuraMotionTests.CommandMenuTests testPointThenPinchSelectsOnceAndPreservesOriginalTarget]' passed (0.003 seconds).
+Test Case '-[AuraMotionTests.CommandMenuTests testStaleCommandIsDroppedBeforeValidCommand]' started.
+Test Case '-[AuraMotionTests.CommandMenuTests testStaleCommandIsDroppedBeforeValidCommand]' passed (0.025 seconds).
+Test Case '-[AuraMotionTests.CommandMenuTests testStillPalmOpensButMovingPalmDoesNot]' started.
+Test Case '-[AuraMotionTests.CommandMenuTests testStillPalmOpensButMovingPalmDoesNot]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.CommandMenuTests testWindowHalvesRespectVisibleBoundsAndNegativeDisplayOrigins]' started.
+Test Case '-[AuraMotionTests.CommandMenuTests testWindowHalvesRespectVisibleBoundsAndNegativeDisplayOrigins]' passed (0.001 seconds).
+Test Suite 'CommandMenuTests' passed at 2026-10-27 02:42:45.793.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.118 (0.139) seconds
+Test Suite 'ConcurrencyTests' started at 2026-10-27 02:42:45.793.
+Test Case '-[AuraMotionTests.ConcurrencyTests testMailboxEnforcesSingleInFlightInference]' started.
+Test Case '-[AuraMotionTests.ConcurrencyTests testMailboxEnforcesSingleInFlightInference]' passed (0.022 seconds).
+Test Case '-[AuraMotionTests.ConcurrencyTests testMailboxZeroBufferLeaksUnderHighFrameRate]' started.
+Test Case '-[AuraMotionTests.ConcurrencyTests testMailboxZeroBufferLeaksUnderHighFrameRate]' passed (0.003 seconds).
+Test Suite 'ConcurrencyTests' passed at 2026-10-27 02:42:45.818.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.025 (0.025) seconds
+Test Suite 'CoordinateTransformTests' started at 2026-10-27 02:42:45.818.
+Test Case '-[AuraMotionTests.CoordinateTransformTests testBoundaryClamping]' started.
+Test Case '-[AuraMotionTests.CoordinateTransformTests testBoundaryClamping]' passed (0.004 seconds).
+Test Case '-[AuraMotionTests.CoordinateTransformTests testPrimaryDisplayTransform]' started.
+Test Case '-[AuraMotionTests.CoordinateTransformTests testPrimaryDisplayTransform]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.CoordinateTransformTests testSecondaryDisplayWithNegativeOrigin]' started.
+Test Case '-[AuraMotionTests.CoordinateTransformTests testSecondaryDisplayWithNegativeOrigin]' passed (0.000 seconds).
+Test Suite 'CoordinateTransformTests' passed at 2026-10-27 02:42:45.823.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds
+Test Suite 'CursorDynamicsTests' started at 2026-10-27 02:42:45.824.
+Test Case '-[AuraMotionTests.CursorDynamicsTests testDisabledModulesTrackTargetsExactlyAndInvalidSamplesDoNotPoisonState]' started.
+Test Case '-[AuraMotionTests.CursorDynamicsTests testDisabledModulesTrackTargetsExactlyAndInvalidSamplesDoNotPoisonState]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.CursorDynamicsTests testDragUsesSmallerDeadzoneAndSkipsQuantizationWhenSeparated]' started.
+Test Case '-[AuraMotionTests.CursorDynamicsTests testDragUsesSmallerDeadzoneAndSkipsQuantizationWhenSeparated]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.CursorDynamicsTests testLowSpeedQuantizesAndHighSpeedKeepsFractionalCoordinates]' started.
+Test Case '-[AuraMotionTests.CursorDynamicsTests testLowSpeedQuantizesAndHighSpeedKeepsFractionalCoordinates]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.CursorDynamicsTests testPhaseChangesAndConfigurationPreserveVisiblePoint]' started.
+Test Case '-[AuraMotionTests.CursorDynamicsTests testPhaseChangesAndConfigurationPreserveVisiblePoint]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.CursorDynamicsTests testSlowDriftAccumulatesThroughAdaptiveDeadzone]' started.
+Test Case '-[AuraMotionTests.CursorDynamicsTests testSlowDriftAccumulatesThroughAdaptiveDeadzone]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.CursorDynamicsTests testVelocityGainIsContinuousMonotoneAndBounded]' started.
+Test Case '-[AuraMotionTests.CursorDynamicsTests testVelocityGainIsContinuousMonotoneAndBounded]' passed (0.000 seconds).
+Test Suite 'CursorDynamicsTests' passed at 2026-10-27 02:42:45.833.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.007 (0.009) seconds
+Test Suite 'CursorExperimentRegressionTests' started at 2026-10-27 02:42:45.833.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testBaselineReplayMatchesTheExistingRuntimeOffControllerPath]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testBaselineReplayMatchesTheExistingRuntimeOffControllerPath]' passed (0.338 seconds).
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testDeclaredStationaryPurposeLabelsStationaryStatsWithoutCreatingTargets]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testDeclaredStationaryPurposeLabelsStationaryStatsWithoutCreatingTargets]' passed (0.026 seconds).
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testExplicitSettingsOverrideAppliesOnlyToOptimizedReplay]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testExplicitSettingsOverrideAppliesOnlyToOptimizedReplay]' passed (1.268 seconds).
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testExportIncludesRequiredReplayColumnsAndBothModes]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testExportIncludesRequiredReplayColumnsAndBothModes]' passed (0.835 seconds).
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testIdleAndFrozenCameraFramesDoNotCountAsStationaryJitter]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testIdleAndFrozenCameraFramesDoNotCountAsStationaryJitter]' passed (0.027 seconds).
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testRecorderStopsAtDurationAndResetReleasesSnapshot]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testRecorderStopsAtDurationAndResetReleasesSnapshot]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testRecorderUsesBoundedRingAndRejectsMixedSources]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testRecorderUsesBoundedRingAndRejectsMixedSources]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testSameTraceProducesStableBaselineAndOptimizedRuns]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testSameTraceProducesStableBaselineAndOptimizedRuns]' passed (0.995 seconds).
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testStationaryMetricsRequireActivePointerAndSplitOnLossIdentityAndGaps]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testStationaryMetricsRequireActivePointerAndSplitOnLossIdentityAndGaps]' passed (0.032 seconds).
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testSweepSeparatesTheIndependentCursorFeatureGroups]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testSweepSeparatesTheIndependentCursorFeatureGroups]' passed (0.153 seconds).
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testUnlabeledCameraTraceDoesNotInventAccuracyOrStationaryJitter]' started.
+Test Case '-[AuraMotionTests.CursorExperimentRegressionTests testUnlabeledCameraTraceDoesNotInventAccuracyOrStationaryJitter]' passed (0.125 seconds).
+Test Suite 'CursorExperimentRegressionTests' passed at 2026-10-27 02:42:49.650.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 3.801 (3.817) seconds
+Test Suite 'CursorReplayTests' started at 2026-10-27 02:42:49.650.
+Test Case '-[AuraMotionTests.CursorReplayTests testKnownSyntheticTraceCarriesTargetsAndNoFakeInferenceTiming]' started.
+Test Case '-[AuraMotionTests.CursorReplayTests testKnownSyntheticTraceCarriesTargetsAndNoFakeInferenceTiming]' passed (0.242 seconds).
+Test Case '-[AuraMotionTests.CursorReplayTests testLegacySessionRequiresExplicitSource]' started.
+Test Case '-[AuraMotionTests.CursorReplayTests testLegacySessionRequiresExplicitSource]' passed (0.007 seconds).
+Test Case '-[AuraMotionTests.CursorReplayTests testLiveExportBundleIncludesLandmarksAndBothEvaluations]' started.
+Test Case '-[AuraMotionTests.CursorReplayTests testLiveExportBundleIncludesLandmarksAndBothEvaluations]' passed (0.129 seconds).
+Test Case '-[AuraMotionTests.CursorReplayTests testRecordedTimingPercentilesAndFrameMetadataAreSummarized]' started.
+Test Case '-[AuraMotionTests.CursorReplayTests testRecordedTimingPercentilesAndFrameMetadataAreSummarized]' passed (0.017 seconds).
+Test Case '-[AuraMotionTests.CursorReplayTests testRecordingJSONRoundTripsSourceAndLandmarks]' started.
+Test Case '-[AuraMotionTests.CursorReplayTests testRecordingJSONRoundTripsSourceAndLandmarks]' passed (0.033 seconds).
+Test Suite 'CursorReplayTests' passed at 2026-10-27 02:42:50.080.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.428 (0.430) seconds
+Test Suite 'CursorStabilityTests' started at 2026-10-27 02:42:50.080.
+Test Case '-[AuraMotionTests.CursorStabilityTests testSingleFrameSpikeAndBriefOcclusionDoNotJumpCursor]' started.
+Test Case '-[AuraMotionTests.CursorStabilityTests testSingleFrameSpikeAndBriefOcclusionDoNotJumpCursor]' passed (0.024 seconds).
+Test Case '-[AuraMotionTests.CursorStabilityTests testSlowMotionAccumulatesAndFastMotionRemainsResponsive]' started.
+Test Case '-[AuraMotionTests.CursorStabilityTests testSlowMotionAccumulatesAndFastMotionRemainsResponsive]' passed (0.019 seconds).
+Test Case '-[AuraMotionTests.CursorStabilityTests testStationaryTremorIsSuppressedAtDifferentFrameRates]' started.
+Test Case '-[AuraMotionTests.CursorStabilityTests testStationaryTremorIsSuppressedAtDifferentFrameRates]' passed (0.004 seconds).
+Test Suite 'CursorStabilityTests' passed at 2026-10-27 02:42:50.128.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.047 (0.048) seconds
+Test Suite 'DragCoalescingTests' started at 2026-10-27 02:42:50.128.
+Test Case '-[AuraMotionTests.DragCoalescingTests testEmergencyReleasePostsAtLastActuallyPostedDragCoordinate]' started.
+Test Case '-[AuraMotionTests.DragCoalescingTests testEmergencyReleasePostsAtLastActuallyPostedDragCoordinate]' passed (0.065 seconds).
+Test Suite 'DragCoalescingTests' passed at 2026-10-27 02:42:50.193.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.065 (0.065) seconds
+Test Suite 'ExperimentSettingsTests' started at 2026-10-27 02:42:50.193.
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testBaselineAndOptimizedPresetsOnlyChangeExperimentConfiguration]' started.
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testBaselineAndOptimizedPresetsOnlyChangeExperimentConfiguration]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testCustomPresetDoesNotChangeExperimentToggles]' started.
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testCustomPresetDoesNotChangeExperimentToggles]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testExperimentSettingsAndLanguagePersistWithExistingPreferences]' started.
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testExperimentSettingsAndLanguagePersistWithExistingPreferences]' passed (0.039 seconds).
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testInvalidExperimentSchemaFallsBackSafelyAndPreservesOtherPreferences]' started.
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testInvalidExperimentSchemaFallsBackSafelyAndPreservesOtherPreferences]' passed (0.011 seconds).
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testInvalidTopLevelSchemaFallsBackToSafeDefaults]' started.
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testInvalidTopLevelSchemaFallsBackToSafeDefaults]' passed (0.009 seconds).
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testPartialExperimentSettingsDeepMergeWithDefaults]' started.
+Test Case '-[AuraMotionTests.ExperimentSettingsTests testPartialExperimentSettingsDeepMergeWithDefaults]' passed (0.024 seconds).
+Test Suite 'ExperimentSettingsTests' passed at 2026-10-27 02:42:50.309.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.086 (0.115) seconds
+Test Suite 'FilterRuntimeTuningTests' started at 2026-10-27 02:42:50.309.
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testCustomResolverAndRuntimeConfigurationRejectNonFiniteAndOutOfRangeValues]' started.
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testCustomResolverAndRuntimeConfigurationRejectNonFiniteAndOutOfRangeValues]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testDragTuningToggleIsIndependentOfOptimizedPointerFilter]' started.
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testDragTuningToggleIsIndependentOfOptimizedPointerFilter]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testInvalidCoordinatesAndTimestampsHoldLastGoodOutput]' started.
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testInvalidCoordinatesAndTimestampsHoldLastGoodOutput]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testLegacyDefaultsMatchOriginalOneEuroOutput]' started.
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testLegacyDefaultsMatchOriginalOneEuroOutput]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testLegacyResolverClampsCalibrationToOriginalRanges]' started.
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testLegacyResolverClampsCalibrationToOriginalRanges]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testOptimizedFilterPresetsResolveToTheirEffectiveValues]' started.
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testOptimizedFilterPresetsResolveToTheirEffectiveValues]' passed (0.007 seconds).
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testReconfigurePreservesFilterHistoryWithoutAFirstSampleJump]' started.
+Test Case '-[AuraMotionTests.FilterRuntimeTuningTests testReconfigurePreservesFilterHistoryWithoutAFirstSampleJump]' passed (0.000 seconds).
+Test Suite 'FilterRuntimeTuningTests' passed at 2026-10-27 02:42:50.322.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.010 (0.013) seconds
+Test Suite 'FilterTests' started at 2026-10-27 02:42:50.322.
+Test Case '-[AuraMotionTests.FilterTests test1EuroFilterDynamicCutoffAdaptsUnderFastMotion]' started.
+Test Case '-[AuraMotionTests.FilterTests test1EuroFilterDynamicCutoffAdaptsUnderFastMotion]' passed (0.007 seconds).
+Test Case '-[AuraMotionTests.FilterTests test1EuroFilterSuppressesJitterAtRest]' started.
+Test Case '-[AuraMotionTests.FilterTests test1EuroFilterSuppressesJitterAtRest]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.FilterTests test2DFilterMaintainsPointIntegrity]' started.
+Test Case '-[AuraMotionTests.FilterTests test2DFilterMaintainsPointIntegrity]' passed (0.009 seconds).
+Test Case '-[AuraMotionTests.FilterTests testEventSynthesizerSubpixelAccumulationPreservesFractionalDeltas]' started.
+Test Case '-[AuraMotionTests.FilterTests testEventSynthesizerSubpixelAccumulationPreservesFractionalDeltas]' passed (0.119 seconds).
+Test Case '-[AuraMotionTests.FilterTests testOneEuroFilter2DTuningReducesJitterSignificantly]' started.
+Test Case '-[AuraMotionTests.FilterTests testOneEuroFilter2DTuningReducesJitterSignificantly]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.FilterTests testPartiallyVisibleHandKeepsItsRecognizedLandmarkConfidence]' started.
+Test Case '-[AuraMotionTests.FilterTests testPartiallyVisibleHandKeepsItsRecognizedLandmarkConfidence]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.FilterTests testScrollControllerInertiaDecaysNaturally]' started.
+Test Case '-[AuraMotionTests.FilterTests testScrollControllerInertiaDecaysNaturally]' passed (0.028 seconds).
+Test Case '-[AuraMotionTests.FilterTests testScrollControllerSmoothsNoisyDeltas]' started.
+Test Case '-[AuraMotionTests.FilterTests testScrollControllerSmoothsNoisyDeltas]' passed (0.003 seconds).
+Test Case '-[AuraMotionTests.FilterTests testSlowScrollMotionAccumulatesUntilItDeliberatelyEngages]' started.
+Test Case '-[AuraMotionTests.FilterTests testSlowScrollMotionAccumulatesUntilItDeliberatelyEngages]' passed (0.006 seconds).
+Test Suite 'FilterTests' passed at 2026-10-27 02:42:50.504.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.177 (0.183) seconds
+Test Suite 'FingerShortcutTests' started at 2026-10-27 02:42:50.505.
+Test Case '-[AuraMotionTests.FingerShortcutTests testContactSpikeAndBriefReleaseDoNotRepeatPaste]' started.
+Test Case '-[AuraMotionTests.FingerShortcutTests testContactSpikeAndBriefReleaseDoNotRepeatPaste]' passed (0.010 seconds).
+Test Case '-[AuraMotionTests.FingerShortcutTests testMiddleFingerContactEmitsCopyOnlyOnceUntilReleased]' started.
+Test Case '-[AuraMotionTests.FingerShortcutTests testMiddleFingerContactEmitsCopyOnlyOnceUntilReleased]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.FingerShortcutTests testRingFingerContactEmitsPasteAndIndexContactIsReservedForClick]' started.
+Test Case '-[AuraMotionTests.FingerShortcutTests testRingFingerContactEmitsPasteAndIndexContactIsReservedForClick]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.FingerShortcutTests testShortcutPostingUsesCommandCAndCommandV]' started.
+Test Case '-[AuraMotionTests.FingerShortcutTests testShortcutPostingUsesCommandCAndCommandV]' passed (0.000 seconds).
+Test Suite 'FingerShortcutTests' passed at 2026-10-27 02:42:50.528.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.012 (0.023) seconds
+Test Suite 'GestureStateMachineTests' started at 2026-10-27 02:42:50.528.
+Test Case '-[AuraMotionTests.GestureStateMachineTests testCleanPinchClickGeneratesZeroDragEvents]' started.
+Test Case '-[AuraMotionTests.GestureStateMachineTests testCleanPinchClickGeneratesZeroDragEvents]' passed (0.021 seconds).
+Test Case '-[AuraMotionTests.GestureStateMachineTests testConfiguredClutchDelayIsApplied]' started.
+Test Case '-[AuraMotionTests.GestureStateMachineTests testConfiguredClutchDelayIsApplied]' passed (0.003 seconds).
+Test Case '-[AuraMotionTests.GestureStateMachineTests testContactClicksBeforeReleaseAndNeverRepeatsWhileHeld]' started.
+Test Case '-[AuraMotionTests.GestureStateMachineTests testContactClicksBeforeReleaseAndNeverRepeatsWhileHeld]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.GestureStateMachineTests testCursorMotionWhilePointingNeverAccidentallyDragsOrSelectsText]' started.
+Test Case '-[AuraMotionTests.GestureStateMachineTests testCursorMotionWhilePointingNeverAccidentallyDragsOrSelectsText]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.GestureStateMachineTests testDwellAndMotionEntersDrag]' started.
+Test Case '-[AuraMotionTests.GestureStateMachineTests testDwellAndMotionEntersDrag]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.GestureStateMachineTests testFoldedHandStopsPointerAfterClutchEngagement]' started.
+Test Case '-[AuraMotionTests.GestureStateMachineTests testFoldedHandStopsPointerAfterClutchEngagement]' passed (0.037 seconds).
+Test Case '-[AuraMotionTests.GestureStateMachineTests testMidAirTapWithinDeadbandEmitsCleanClick]' started.
+Test Case '-[AuraMotionTests.GestureStateMachineTests testMidAirTapWithinDeadbandEmitsCleanClick]' passed (0.011 seconds).
+Test Case '-[AuraMotionTests.GestureStateMachineTests testPrePinchAnchorStabilizationLocksTargetPositionDuringFingerCurl]' started.
+Test Case '-[AuraMotionTests.GestureStateMachineTests testPrePinchAnchorStabilizationLocksTargetPositionDuringFingerCurl]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.GestureStateMachineTests testScrollMutualExclusionWithPinch]' started.
+Test Case '-[AuraMotionTests.GestureStateMachineTests testScrollMutualExclusionWithPinch]' passed (0.002 seconds).
+Test Suite 'GestureStateMachineTests' passed at 2026-10-27 02:42:50.622.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.075 (0.095) seconds
+Test Suite 'HandFusionTests' started at 2026-10-27 02:42:50.629.
+Test Case '-[AuraMotionTests.HandFusionTests testFingerCurlForPinchDoesNotMoveCursorButPalmTranslationDoes]' started.
+Test Case '-[AuraMotionTests.HandFusionTests testFingerCurlForPinchDoesNotMoveCursorButPalmTranslationDoes]' passed (0.003 seconds).
+Test Case '-[AuraMotionTests.HandFusionTests testFusionReanchorsAfterLandmarkSetOrIdentityChanges]' started.
+Test Case '-[AuraMotionTests.HandFusionTests testFusionReanchorsAfterLandmarkSetOrIdentityChanges]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.HandFusionTests testFusionSuppressesFingerWobbleWithoutDelayingPalmTranslation]' started.
+Test Case '-[AuraMotionTests.HandFusionTests testFusionSuppressesFingerWobbleWithoutDelayingPalmTranslation]' passed (0.010 seconds).
+Test Case '-[AuraMotionTests.HandFusionTests testMovementCalibrationLearnsAndPersistsWithoutChangingContacts]' started.
+Test Case '-[AuraMotionTests.HandFusionTests testMovementCalibrationLearnsAndPersistsWithoutChangingContacts]' passed (0.025 seconds).
+Test Case '-[AuraMotionTests.HandFusionTests testMovementCalibrationRejectsMovingRestAndInterruptedRecording]' started.
+Test Case '-[AuraMotionTests.HandFusionTests testMovementCalibrationRejectsMovingRestAndInterruptedRecording]' passed (0.014 seconds).
+Test Suite 'HandFusionTests' passed at 2026-10-27 02:42:50.691.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.053 (0.062) seconds
+Test Suite 'HandPoseProviderTests' started at 2026-10-27 02:42:50.691.
+Test Case '-[AuraMotionTests.HandPoseProviderTests testMediaPipeIsExplicitlyUnavailableWithoutARealBackend]' started.
+Test Case '-[AuraMotionTests.HandPoseProviderTests testMediaPipeIsExplicitlyUnavailableWithoutARealBackend]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.HandPoseProviderTests testReconfigureResetsOldProviderAndCompletesAfterReplacementIsReady]' started.
+Test Case '-[AuraMotionTests.HandPoseProviderTests testReconfigureResetsOldProviderAndCompletesAfterReplacementIsReady]' passed (0.302 seconds).
+Test Case '-[AuraMotionTests.HandPoseProviderTests testSlowProviderKeepsMailboxIngressToOneScheduledDrain]' started.
+Test Case '-[AuraMotionTests.HandPoseProviderTests testSlowProviderKeepsMailboxIngressToOneScheduledDrain]' passed (0.068 seconds).
+Test Case '-[AuraMotionTests.HandPoseProviderTests testVisionIsTheDefaultProviderWithFullFrameInference]' started.
+Test Case '-[AuraMotionTests.HandPoseProviderTests testVisionIsTheDefaultProviderWithFullFrameInference]' passed (0.002 seconds).
+Test Suite 'HandPoseProviderTests' passed at 2026-10-27 02:42:51.068.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.373 (0.377) seconds
+Test Suite 'InteractionRegressionTests' started at 2026-10-27 02:42:51.068.
+Test Case '-[AuraMotionTests.InteractionRegressionTests testActiveScrollPreservesSubpixelMotion]' started.
+Test Case '-[AuraMotionTests.InteractionRegressionTests testActiveScrollPreservesSubpixelMotion]' passed (0.015 seconds).
+Test Case '-[AuraMotionTests.InteractionRegressionTests testFilterRejectsOutOfOrderSamplesAndResetsAfterGap]' started.
+Test Case '-[AuraMotionTests.InteractionRegressionTests testFilterRejectsOutOfOrderSamplesAndResetsAfterGap]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.InteractionRegressionTests testHeldCopyDoesNotLeakCursorScrollOrSwipe]' started.
+Test Case '-[AuraMotionTests.InteractionRegressionTests testHeldCopyDoesNotLeakCursorScrollOrSwipe]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.InteractionRegressionTests testMenuConsumesGestureInputAndTrackingLossDismissesIt]' started.
+Test Case '-[AuraMotionTests.InteractionRegressionTests testMenuConsumesGestureInputAndTrackingLossDismissesIt]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.InteractionRegressionTests testSingleFrameScrollPoseCannotScrollAndDeliberateScrollStillEngages]' started.
+Test Case '-[AuraMotionTests.InteractionRegressionTests testSingleFrameScrollPoseCannotScrollAndDeliberateScrollStillEngages]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.InteractionRegressionTests testTwoFingerScrollWithThumbExtendedAndImmediateReturnToPointer]' started.
+Test Case '-[AuraMotionTests.InteractionRegressionTests testTwoFingerScrollWithThumbExtendedAndImmediateReturnToPointer]' passed (0.000 seconds).
+Test Suite 'InteractionRegressionTests' passed at 2026-10-27 02:42:51.089.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.019 (0.020) seconds
+Test Suite 'LandmarkReplayTests' started at 2026-10-27 02:42:51.089.
+Test Case '-[AuraMotionTests.LandmarkReplayTests testReplayCleanPinchClickFixture]' started.
+Test Case '-[AuraMotionTests.LandmarkReplayTests testReplayCleanPinchClickFixture]' passed (0.073 seconds).
+Test Case '-[AuraMotionTests.LandmarkReplayTests testReplaySuddenHandLossFixture]' started.
+Test Case '-[AuraMotionTests.LandmarkReplayTests testReplaySuddenHandLossFixture]' passed (0.017 seconds).
+Test Suite 'LandmarkReplayTests' passed at 2026-10-27 02:42:51.180.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.090 (0.091) seconds
+Test Suite 'LifecycleTests' started at 2026-10-27 02:42:51.180.
+Test Case '-[AuraMotionTests.LifecycleTests testAppStopReleasesButtons]' started.
+Test Case '-[AuraMotionTests.LifecycleTests testAppStopReleasesButtons]' passed (1.711 seconds).
+Test Case '-[AuraMotionTests.LifecycleTests testCapturePipelineAsyncLifecycle]' started.
+<workspace>/Tests/AuraMotionTests/LifecycleTests.swift:52: error: -[AuraMotionTests.LifecycleTests testCapturePipelineAsyncLifecycle] : Asynchronous wait failed: Exceeded timeout of 5 seconds, with unfulfilled expectations: "Pipeline configure".
+Test Case '-[AuraMotionTests.LifecycleTests testCapturePipelineAsyncLifecycle]' failed (8.128 seconds).
+Test Case '-[AuraMotionTests.LifecycleTests testCapturePipelineRapidStartStopEndsInIdle]' started.
+Test Case '-[AuraMotionTests.LifecycleTests testCapturePipelineRapidStartStopEndsInIdle]' passed (1.988 seconds).
+Test Case '-[AuraMotionTests.LifecycleTests testInterruptionTriggersEmergencyRelease]' started.
+Test Case '-[AuraMotionTests.LifecycleTests testInterruptionTriggersEmergencyRelease]' passed (0.080 seconds).
+Test Suite 'LifecycleTests' failed at 2026-10-27 02:43:03.153.
+	 Executed 4 tests, with 1 failure (0 unexpected) in 11.907 (11.973) seconds
+Test Suite 'LocalizationTests' started at 2026-10-27 02:43:03.153.
+Test Case '-[AuraMotionTests.LocalizationTests testEnglishUsesStableSourceCopyAndFallback]' started.
+Test Case '-[AuraMotionTests.LocalizationTests testEnglishUsesStableSourceCopyAndFallback]' passed (0.066 seconds).
+Test Case '-[AuraMotionTests.LocalizationTests testEveryStaticUiKeyHasChineseCopy]' started.
+Test Case '-[AuraMotionTests.LocalizationTests testEveryStaticUiKeyHasChineseCopy]' passed (0.029 seconds).
+Test Case '-[AuraMotionTests.LocalizationTests testExperimentAndVisionStatusCopyIsLocalized]' started.
+Test Case '-[AuraMotionTests.LocalizationTests testExperimentAndVisionStatusCopyIsLocalized]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.LocalizationTests testPointerValidationSurfaceCopyIsLocalized]' started.
+Test Case '-[AuraMotionTests.LocalizationTests testPointerValidationSurfaceCopyIsLocalized]' passed (0.005 seconds).
+Test Case '-[AuraMotionTests.LocalizationTests testSimplifiedChineseTranslationAcrossUISurfaces]' started.
+Test Case '-[AuraMotionTests.LocalizationTests testSimplifiedChineseTranslationAcrossUISurfaces]' passed (0.018 seconds).
+Test Suite 'LocalizationTests' passed at 2026-10-27 02:43:03.280.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.118 (0.126) seconds
+Test Suite 'MotionPriorityTests' started at 2026-10-27 02:43:03.280.
+Test Case '-[AuraMotionTests.MotionPriorityTests testBaselinePolicyAndRuntimeUnload]' started.
+Test Case '-[AuraMotionTests.MotionPriorityTests testBaselinePolicyAndRuntimeUnload]' passed (0.021 seconds).
+Test Suite 'MotionPriorityTests' passed at 2026-10-27 02:43:03.301.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.021 (0.022) seconds
+Test Suite 'PalmSwipeDetectorTests' started at 2026-10-27 02:43:03.301.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testCooldownAndReturnStrokeCannotReverseTrigger]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testCooldownAndReturnStrokeCannotReverseTrigger]' passed (0.003 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testCorrectKeyEventSequenceEmittedForEachDirection]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testCorrectKeyEventSequenceEmittedForEachDirection]' passed (0.334 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testDiagonalOrVerticalMotionRejected]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testDiagonalOrVerticalMotionRejected]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testLowConfidenceOrMissingPalmDataResetsSafely]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testLowConfidenceOrMissingPalmDataResetsSafely]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testOpenPalmGracePeriodBridgesSingleFrameDrop]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testOpenPalmGracePeriodBridgesSingleFrameDrop]' passed (0.005 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testPalmCandidateSmoothlyMaintainsDetectedStateDuringEarlyMotion]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testPalmCandidateSmoothlyMaintainsDetectedStateDuringEarlyMotion]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testPalmMustReArmBeforeSecondSwipe]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testPalmMustReArmBeforeSecondSwipe]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testPoseClassifierRecognizesThreeExtendedFingersAsOpenPalm]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testPoseClassifierRecognizesThreeExtendedFingersAsOpenPalm]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testPoseClassifierRejectsPinchAsOpenPalm]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testPoseClassifierRejectsPinchAsOpenPalm]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testStaleEpochDisabledInjectionDeniedPermissionArbitrationCauseZeroKeyEvents]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testStaleEpochDisabledInjectionDeniedPermissionArbitrationCauseZeroKeyEvents]' passed (0.058 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testStationaryPalmDoesNotTriggerSwipeAndEntersRest]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testStationaryPalmDoesNotTriggerSwipeAndEntersRest]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testStationaryPalmEntersPalmRestState]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testStationaryPalmEntersPalmRestState]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSustainedPalmOpensCommandMenuThroughStateMachine]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSustainedPalmOpensCommandMenuThroughStateMachine]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSwipeAfterStationaryRestPeriodIsDetectedWithoutVelocityDilution]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSwipeAfterStationaryRestPeriodIsDetectedWithoutVelocityDilution]' passed (0.004 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSwipeIsSuppressedDuringPinchDragScroll]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSwipeIsSuppressedDuringPinchDragScroll]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSwipeLeftDetectedWhenPalmMovesHorizontallyToLeft]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSwipeLeftDetectedWhenPalmMovesHorizontallyToLeft]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSwipeRightDetectedWhenPalmMovesHorizontallyToRight]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSwipeRightDetectedWhenPalmMovesHorizontallyToRight]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSwitchAppSequenceEmitsCommandTab]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testSwitchAppSequenceEmitsCommandTab]' passed (0.156 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testThumbIndexContactArmsPinchAndReleaseEmitsClick]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testThumbIndexContactArmsPinchAndReleaseEmitsClick]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testTransitionFromPalmRestToPointerEngagesWithoutLagOnIndexLift]' started.
+Test Case '-[AuraMotionTests.PalmSwipeDetectorTests testTransitionFromPalmRestToPointerEngagesWithoutLagOnIndexLift]' passed (0.001 seconds).
+Test Suite 'PalmSwipeDetectorTests' passed at 2026-10-27 02:43:03.885.
+	 Executed 20 tests, with 0 failures (0 unexpected) in 0.574 (0.584) seconds
+Test Suite 'PermissionHardeningTests' started at 2026-10-27 02:43:03.885.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testArbitratorConcurrentStartStopSafety]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testArbitratorConcurrentStartStopSafety]' passed (0.042 seconds).
+Test Case '-[AuraMotionTests.PermissionHardeningTests testArbitratorRepeatedStartStopDoesNotCrash]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testArbitratorRepeatedStartStopDoesNotCrash]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.PermissionHardeningTests testArbitratorStopCompletionFiresWhenNeverStarted]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testArbitratorStopCompletionFiresWhenNeverStarted]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.PermissionHardeningTests testCachedSnapshotReflectsLastUpdate]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testCachedSnapshotReflectsLastUpdate]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.PermissionHardeningTests testHUDSnapshotUsesCachedPermissionsNotLiveTCC]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testHUDSnapshotUsesCachedPermissionsNotLiveTCC]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.PermissionHardeningTests testInvalidatePreservesCameraButRevokesInjection]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testInvalidatePreservesCameraButRevokesInjection]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.PermissionHardeningTests testOutputCoordinatorInjectionProviderUsesOnlyCachedState]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testOutputCoordinatorInjectionProviderUsesOnlyCachedState]' passed (0.128 seconds).
+Test Case '-[AuraMotionTests.PermissionHardeningTests testPeriodicRefreshUpdatesGate]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testPeriodicRefreshUpdatesGate]' passed (0.358 seconds).
+Test Case '-[AuraMotionTests.PermissionHardeningTests testPermissionStatusExplainsSeparateInputGates]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testPermissionStatusExplainsSeparateInputGates]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.PermissionHardeningTests testStartPeriodicRefreshIsIdempotent]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testStartPeriodicRefreshIsIdempotent]' passed (0.296 seconds).
+Test Case '-[AuraMotionTests.PermissionHardeningTests testStopPeriodicRefreshHaltsTimer]' started.
+Test Case '-[AuraMotionTests.PermissionHardeningTests testStopPeriodicRefreshHaltsTimer]' passed (0.328 seconds).
+Test Suite 'PermissionHardeningTests' passed at 2026-10-27 02:43:05.045.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 1.158 (1.160) seconds
+Test Suite 'PersonalCalibrationTests' started at 2026-10-27 02:43:05.045.
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testConfirmationRestartsAfterTrackingGap]' started.
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testConfirmationRestartsAfterTrackingGap]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testLearnsSeparatedContactsAndPersistsAllFingerThresholds]' started.
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testLearnsSeparatedContactsAndPersistsAllFingerThresholds]' passed (0.008 seconds).
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testLegacyProfileLoadsWithoutNewFields]' started.
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testLegacyProfileLoadsWithoutNewFields]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testLowConfidenceAndDuplicateFramesDoNotCompleteStep]' started.
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testLowConfidenceAndDuplicateFramesDoNotCompleteStep]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testOverlappingPosesCannotReplaceCalibration]' started.
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testOverlappingPosesCannotReplaceCalibration]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testSingleFramePinchDoesNotClick]' started.
+Test Case '-[AuraMotionTests.PersonalCalibrationTests testSingleFramePinchDoesNotClick]' passed (0.000 seconds).
+Test Suite 'PersonalCalibrationTests' passed at 2026-10-27 02:43:05.061.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.014 (0.015) seconds
+Test Suite 'PointerAnchorTests' started at 2026-10-27 02:43:05.061.
+Test Case '-[AuraMotionTests.PointerAnchorTests testPalmCentroidLandmarkChurnPreservesOutputContinuity]' started.
+Test Case '-[AuraMotionTests.PointerAnchorTests testPalmCentroidLandmarkChurnPreservesOutputContinuity]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.PointerAnchorTests testPalmMCPFusionIgnoresIndexAndThumbTipWobble]' started.
+Test Case '-[AuraMotionTests.PointerAnchorTests testPalmMCPFusionIgnoresIndexAndThumbTipWobble]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.PointerAnchorTests testStableAnchorRejectsInvalidConfidenceAndNonFiniteLandmarks]' started.
+Test Case '-[AuraMotionTests.PointerAnchorTests testStableAnchorRejectsInvalidConfidenceAndNonFiniteLandmarks]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.PointerAnchorTests testStableAnchorResetsAcrossIdentityChangesAndLongGaps]' started.
+Test Case '-[AuraMotionTests.PointerAnchorTests testStableAnchorResetsAcrossIdentityChangesAndLongGaps]' passed (0.000 seconds).
+Test Suite 'PointerAnchorTests' passed at 2026-10-27 02:43:05.065.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'RaceConditionArbitrationTests' started at 2026-10-27 02:43:05.065.
+Test Case '-[AuraMotionTests.RaceConditionArbitrationTests testMonotonicEpochNeverResets]' started.
+Test Case '-[AuraMotionTests.RaceConditionArbitrationTests testMonotonicEpochNeverResets]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.RaceConditionArbitrationTests testNoEventsPostedWhenInjectionDisabled]' started.
+Test Case '-[AuraMotionTests.RaceConditionArbitrationTests testNoEventsPostedWhenInjectionDisabled]' passed (0.084 seconds).
+Test Case '-[AuraMotionTests.RaceConditionArbitrationTests testPermissionGateControlsEventPostingDirectly]' started.
+Test Case '-[AuraMotionTests.RaceConditionArbitrationTests testPermissionGateControlsEventPostingDirectly]' passed (0.138 seconds).
+Test Case '-[AuraMotionTests.RaceConditionArbitrationTests testStaleMoveDragScrollClickMouseDownAreNeverPosted]' started.
+Test Case '-[AuraMotionTests.RaceConditionArbitrationTests testStaleMoveDragScrollClickMouseDownAreNeverPosted]' passed (0.208 seconds).
+Test Suite 'RaceConditionArbitrationTests' passed at 2026-10-27 02:43:05.625.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.431 (0.561) seconds
+Test Suite 'ReEnableSequencingTests' started at 2026-10-27 02:43:05.625.
+Test Case '-[AuraMotionTests.ReEnableSequencingTests testStrictReEnableSequencingIncrementsEpochAndEnables]' started.
+Test Case '-[AuraMotionTests.ReEnableSequencingTests testStrictReEnableSequencingIncrementsEpochAndEnables]' passed (0.073 seconds).
+Test Suite 'ReEnableSequencingTests' passed at 2026-10-27 02:43:05.957.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.073 (0.331) seconds
+Test Suite 'RelativePointerControllerTests' started at 2026-10-27 02:43:05.957.
+Test Case '-[AuraMotionTests.RelativePointerControllerTests testFrozenPhaseResumesAtSuppliedPhysicalCursorPosition]' started.
+Test Case '-[AuraMotionTests.RelativePointerControllerTests testFrozenPhaseResumesAtSuppliedPhysicalCursorPosition]' passed (0.007 seconds).
+Test Case '-[AuraMotionTests.RelativePointerControllerTests testHotDisableKeepsLegacyMappingContinuousAcrossSteadyFrames]' started.
+Test Case '-[AuraMotionTests.RelativePointerControllerTests testHotDisableKeepsLegacyMappingContinuousAcrossSteadyFrames]' passed (0.008 seconds).
+Test Case '-[AuraMotionTests.RelativePointerControllerTests testOptimizedMappingRebasesAcrossIdentityChangeAndInvalidAnchorSpan]' started.
+Test Case '-[AuraMotionTests.RelativePointerControllerTests testOptimizedMappingRebasesAcrossIdentityChangeAndInvalidAnchorSpan]' passed (0.085 seconds).
+Test Suite 'RelativePointerControllerTests' passed at 2026-10-27 02:43:06.062.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.100 (0.105) seconds
+Test Suite 'RelativePointerMappingTests' started at 2026-10-27 02:43:06.062.
+Test Case '-[AuraMotionTests.RelativePointerMappingTests testFirstHandSampleAnchorsAtVisibleCursorThenAppliesDeltas]' started.
+Test Case '-[AuraMotionTests.RelativePointerMappingTests testFirstHandSampleAnchorsAtVisibleCursorThenAppliesDeltas]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.RelativePointerMappingTests testFreezeAndResumeRebaseWithoutJump]' started.
+Test Case '-[AuraMotionTests.RelativePointerMappingTests testFreezeAndResumeRebaseWithoutJump]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.RelativePointerMappingTests testRelativeMappingPreservesRebaseOnAnActiveSecondaryDisplay]' started.
+Test Case '-[AuraMotionTests.RelativePointerMappingTests testRelativeMappingPreservesRebaseOnAnActiveSecondaryDisplay]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.RelativePointerMappingTests testRelativeOutputClampsToNegativeOriginDisplayBounds]' started.
+Test Case '-[AuraMotionTests.RelativePointerMappingTests testRelativeOutputClampsToNegativeOriginDisplayBounds]' passed (0.002 seconds).
+Test Suite 'RelativePointerMappingTests' passed at 2026-10-27 02:43:06.070.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.004 (0.008) seconds
+Test Suite 'SafetyPolicyTests' started at 2026-10-27 02:43:06.071.
+Test Case '-[AuraMotionTests.SafetyPolicyTests testMouseButtonGuardianIdempotentRelease]' started.
+Test Case '-[AuraMotionTests.SafetyPolicyTests testMouseButtonGuardianIdempotentRelease]' passed (0.003 seconds).
+Test Suite 'SafetyPolicyTests' passed at 2026-10-27 02:43:06.074.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'SelfInjectionArbitrationTests' started at 2026-10-27 02:43:06.074.
+Test Case '-[AuraMotionTests.SelfInjectionArbitrationTests testAuraMotionTaggedEventsBypassArbitration]' started.
+Test Case '-[AuraMotionTests.SelfInjectionArbitrationTests testAuraMotionTaggedEventsBypassArbitration]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.SelfInjectionArbitrationTests testUntaggedExternalEventDisablesArbitrationAndBumpsEpoch]' started.
+Test Case '-[AuraMotionTests.SelfInjectionArbitrationTests testUntaggedExternalEventDisablesArbitrationAndBumpsEpoch]' passed (0.000 seconds).
+Test Suite 'SelfInjectionArbitrationTests' passed at 2026-10-27 02:43:06.077.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+Test Suite 'SettingsMigrationTests' started at 2026-10-27 02:43:06.077.
+Test Case '-[AuraMotionTests.SettingsMigrationTests testExplicitSwipeSelectionSurvivesReload]' started.
+Test Case '-[AuraMotionTests.SettingsMigrationTests testExplicitSwipeSelectionSurvivesReload]' passed (0.470 seconds).
+Test Case '-[AuraMotionTests.SettingsMigrationTests testLegacySettingsPreservePreferencesAndGainSwipeOptions]' started.
+Test Case '-[AuraMotionTests.SettingsMigrationTests testLegacySettingsPreservePreferencesAndGainSwipeOptions]' passed (0.169 seconds).
+Test Case '-[AuraMotionTests.SettingsMigrationTests testMigratedSettingsRouteBothSwipeDirectionsToAppSwitching]' started.
+Test Case '-[AuraMotionTests.SettingsMigrationTests testMigratedSettingsRouteBothSwipeDirectionsToAppSwitching]' passed (0.320 seconds).
+Test Suite 'SettingsMigrationTests' passed at 2026-10-27 02:43:07.042.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.959 (0.965) seconds
+Test Suite 'VisionROITests' started at 2026-10-27 02:43:07.042.
+Test Case '-[AuraMotionTests.VisionROITests testExpandedRegionUsesScaleMinimumSizeAndClampsToImageBounds]' started.
+Test Case '-[AuraMotionTests.VisionROITests testExpandedRegionUsesScaleMinimumSizeAndClampsToImageBounds]' passed (0.050 seconds).
+Test Case '-[AuraMotionTests.VisionROITests testFullFrameCoordinatesKeepTheExistingMirrorMappingExactly]' started.
+Test Case '-[AuraMotionTests.VisionROITests testFullFrameCoordinatesKeepTheExistingMirrorMappingExactly]' passed (0.081 seconds).
+Test Case '-[AuraMotionTests.VisionROITests testMirroredLandmarksAreConvertedBackToCameraCoordinatesForROI]' started.
+Test Case '-[AuraMotionTests.VisionROITests testMirroredLandmarksAreConvertedBackToCameraCoordinatesForROI]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.VisionROITests testMirroredROIUsesRawVisionCoordinatesThenMirrorsOnce]' started.
+Test Case '-[AuraMotionTests.VisionROITests testMirroredROIUsesRawVisionCoordinatesThenMirrorsOnce]' passed (0.005 seconds).
+Test Case '-[AuraMotionTests.VisionROITests testROIIsDisabledAndDoesNotRetainLandmarksByDefault]' started.
+Test Case '-[AuraMotionTests.VisionROITests testROIIsDisabledAndDoesNotRetainLandmarksByDefault]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.VisionROITests testROIRefreshUsesElapsedTimeAcrossVariableFrameIntervals]' started.
+Test Case '-[AuraMotionTests.VisionROITests testROIRefreshUsesElapsedTimeAcrossVariableFrameIntervals]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.VisionROITests testROIRegionRelativeCoordinatesMapBackToFullImage]' started.
+Test Case '-[AuraMotionTests.VisionROITests testROIRegionRelativeCoordinatesMapBackToFullImage]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.VisionROITests testROIUsesFullImageLandmarksAndFallsBackImmediatelyAfterLoss]' started.
+Test Case '-[AuraMotionTests.VisionROITests testROIUsesFullImageLandmarksAndFallsBackImmediatelyAfterLoss]' passed (0.000 seconds).
+Test Suite 'VisionROITests' passed at 2026-10-27 02:43:07.196.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.138 (0.154) seconds
+Test Suite 'AuraMotionTests.xctest' failed at 2026-10-27 02:43:07.196.
+	 Executed 169 tests, with 1 failure (0 unexpected) in 20.897 (21.542) seconds
+Test Suite 'All tests' failed at 2026-10-27 02:43:07.196.
+	 Executed 169 tests, with 1 failure (0 unexpected) in 20.897 (21.569) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.005 seconds.
+Note: Some test targets reported failures:
+  - AuraMotionTests (XCTest)

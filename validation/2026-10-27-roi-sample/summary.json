@@ -1,0 +1,42 @@
+{
+  "source_file": "recording-and-replay.json",
+  "session_id": "A1A66F3F-0F99-4AFF-92A8-50B6E9F07508",
+  "capture": "Vision with ROI enabled; no cursor optimizations active",
+  "frames": 451,
+  "hand_frames": 450,
+  "states": {
+    "pointer": 440,
+    "trackingLost": 1,
+    "clutch": 10
+  },
+  "roi_frames": 436,
+  "full_frame_frames": 15,
+  "effective_fps": 30.013846387712466,
+  "inference_p50_ms": 10.904541646596044,
+  "inference_p95_ms": 14.339458313770592,
+  "recorded_output": {
+    "rms_step_pt": 14.87216437591876,
+    "p95_step_pt": 34.55290118347249,
+    "max_step_pt": 77.00448150197606,
+    "consecutive_pointer_steps": 438
+  },
+  "same_trace_offline_replay": {
+    "baseline": {
+      "observations": 438,
+      "rms_step_pt": 14.90594031913097,
+      "p95_step_pt": 34.87205211854145,
+      "max_step_pt": 76.65760584099573,
+      "sigma_x_pt": 39.728143750389336,
+      "sigma_y_pt": 26.882158253891227
+    },
+    "optimized": {
+      "observations": 438,
+      "rms_step_pt": 15.88426826276533,
+      "p95_step_pt": 36.710550034022475,
+      "max_step_pt": 75.59614847391892,
+      "sigma_x_pt": 35.36673010427646,
+      "sigma_y_pt": 22.4941163587099
+    }
+  },
+  "limitations": "Stationary was user-declared; observed displacement can include real hand motion and tracking error. This is not a paired ROI-off trial, a live optimized run, or proof of the cause of displacement. CPU, memory, target accuracy and drag performance were not recorded in this sample."
+}

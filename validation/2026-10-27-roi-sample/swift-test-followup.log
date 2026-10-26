@@ -1,0 +1,55 @@
+Building for debugging...
+[Provisioning 2 / 8]
+[1 / 3]
+[2 / 4] AuraMotionCore
+[3 / 6]
+[4 / 6] AuraMotionCore
+[9 / 11] AuraMotion-product
+[12 / 20] AuraMotion-product
+[13 / 20] AuraMotion-product
+[14 / 20] AuraMotion-product
+[15 / 20] AuraMotion-product
+[16 / 20] AuraMotion-product
+[17 / 20] AuraMotion-product
+[18 / 20] AuraMotion-product
+[20 / 23] AuraMotionCore
+[23 / 27] AuraMotionCore
+[24 / 27] AuraMotionCore
+[26 / 27] AuraMotionCore
+[27 / 27] AuraMotion-product
+[30 / 32] CursorReplay-product
+[32 / 32] CursorReplay-product
+[33 / 34] CursorReplay-product
+[35 / 40] AuraMotionTests-product
+[37 / 42] AuraMotionTests-product
+[42 / 43] AuraMotionTests-product
+[43 / 44] AuraMotionTests-product
+[44 / 45] AuraMotionTests-product
+[45 / 45] AuraMotion-product
+[46 / 47] CursorReplay-product
+[48 / 48] CursorReplay-product
+Build complete! (21.12秒)
+Test Suite 'Selected tests' started at 2026-10-27 02:48:21.325.
+Test Suite 'AuraMotionTests.xctest' started at 2026-10-27 02:48:21.337.
+Test Suite 'LifecycleTests' started at 2026-10-27 02:48:21.337.
+Test Case '-[AuraMotionTests.LifecycleTests testCapturePipelineAsyncLifecycle]' started.
+Test Case '-[AuraMotionTests.LifecycleTests testCapturePipelineAsyncLifecycle]' passed (2.843 seconds).
+Test Suite 'LifecycleTests' passed at 2026-10-27 02:48:24.183.
+	 Executed 1 test, with 0 failures (0 unexpected) in 2.843 (2.846) seconds
+Test Suite 'LocalizationTests' started at 2026-10-27 02:48:24.183.
+Test Case '-[AuraMotionTests.LocalizationTests testEnglishUsesStableSourceCopyAndFallback]' started.
+Test Case '-[AuraMotionTests.LocalizationTests testEnglishUsesStableSourceCopyAndFallback]' passed (0.007 seconds).
+Test Case '-[AuraMotionTests.LocalizationTests testEveryStaticUiKeyHasChineseCopy]' started.
+Test Case '-[AuraMotionTests.LocalizationTests testEveryStaticUiKeyHasChineseCopy]' passed (0.002 seconds).
+Test Case '-[AuraMotionTests.LocalizationTests testExperimentAndVisionStatusCopyIsLocalized]' started.
+Test Case '-[AuraMotionTests.LocalizationTests testExperimentAndVisionStatusCopyIsLocalized]' passed (0.001 seconds).
+Test Case '-[AuraMotionTests.LocalizationTests testPointerValidationSurfaceCopyIsLocalized]' started.
+Test Case '-[AuraMotionTests.LocalizationTests testPointerValidationSurfaceCopyIsLocalized]' passed (0.000 seconds).
+Test Case '-[AuraMotionTests.LocalizationTests testSimplifiedChineseTranslationAcrossUISurfaces]' started.
+Test Case '-[AuraMotionTests.LocalizationTests testSimplifiedChineseTranslationAcrossUISurfaces]' passed (0.001 seconds).
+Test Suite 'LocalizationTests' passed at 2026-10-27 02:48:24.195.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.011 (0.012) seconds
+Test Suite 'AuraMotionTests.xctest' passed at 2026-10-27 02:48:24.195.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 2.854 (2.858) seconds
+Test Suite 'Selected tests' passed at 2026-10-27 02:48:24.195.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 2.854 (2.870) seconds
