@@ -43,11 +43,9 @@ public enum VisionROI {
             return mirroredPoint
         }
 
-        // Vision's ROI coordinates are relative to the request crop. Undo the
-        // UI mirror before applying the unmirrored request rectangle, then put
-        // the app-facing mirror back on the full-image result.
-        let unmirroredX = isMirrored ? 1 - point.x : point.x
-        let fullX = region.minX + unmirroredX * region.width
+        // Vision returns raw crop-relative coordinates. Apply the crop in those
+        // raw image coordinates first, then apply the app-facing mirror once.
+        let fullX = region.minX + point.x * region.width
         let fullY = region.minY + point.y * region.height
         return CGPoint(x: isMirrored ? 1 - fullX : fullX, y: fullY)
     }

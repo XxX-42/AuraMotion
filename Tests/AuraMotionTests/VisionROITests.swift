@@ -48,17 +48,25 @@ final class VisionROITests: XCTestCase {
         XCTAssertEqual(point.y, 0.5, accuracy: 0.0001)
     }
 
-    func testMirroredROICoordinatesUnmirrorMapAndRemirror() {
+    func testMirroredROIUsesRawVisionCoordinatesThenMirrorsOnce() {
         let roi = CGRect(x: 0.4, y: 0.2, width: 0.5, height: 0.6)
-        let point = VisionROI.fullImagePoint(
-            fromVisionPoint: CGPoint(x: 0.4, y: 0.5),
+        let rawVisionPoint = CGPoint(x: 0.4, y: 0.5)
+        let unmirrored = VisionROI.fullImagePoint(
+            fromVisionPoint: rawVisionPoint,
+            region: roi,
+            usedFullFrame: false,
+            isMirrored: false
+        )
+        let mirrored = VisionROI.fullImagePoint(
+            fromVisionPoint: rawVisionPoint,
             region: roi,
             usedFullFrame: false,
             isMirrored: true
         )
 
-        XCTAssertEqual(point.x, 0.3, accuracy: 0.0001)
-        XCTAssertEqual(point.y, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(unmirrored.x, 0.6, accuracy: 0.0001)
+        XCTAssertEqual(mirrored.x, 1 - unmirrored.x, accuracy: 0.0001)
+        XCTAssertEqual(mirrored.y, unmirrored.y, accuracy: 0.0001)
     }
 
     func testFullFrameCoordinatesKeepTheExistingMirrorMappingExactly() {
