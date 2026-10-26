@@ -56,6 +56,13 @@ public extension Notification.Name {
 public final class PermissionsManager: @unchecked Sendable {
     public let gate = PermissionGate()
 
+    public var controlPermissionSettingsName: String {
+        if #available(macOS 27.0, *) {
+            return "Device Control & Data Access"
+        }
+        return "Accessibility"
+    }
+
     /// Interval between periodic permission refresh cycles (seconds).
     public var refreshInterval: TimeInterval = 5.0
 
@@ -153,8 +160,14 @@ public final class PermissionsManager: @unchecked Sendable {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    public func requestPostEventAccess() {
-        _ = CGRequestPostEventAccess()
+    @discardableResult
+    public func requestPostEventAccess() -> Bool {
+        // Event posting cannot be approved while computer-control access is
+        // missing. Request that prerequisite first instead of silently failing.
+        if !AXIsProcessTrusted() {
+            guard requestAccessibilityIfNeeded() else { return false }
+        }
+        return CGRequestPostEventAccess()
     }
 
     public func requestListenEventAccess() {

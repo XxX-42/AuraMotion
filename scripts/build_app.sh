@@ -18,8 +18,13 @@ BIN_PATH="$(swift build -c release --show-bin-path)/AuraMotion"
 cp "${BIN_PATH}" "${MACOS_DIR}/AuraMotion"
 cp "Resources/Info.plist" "${CONTENTS_DIR}/Info.plist"
 
-echo "==> Code signing application bundle with camera sandbox entitlements..."
-codesign -s - --force --deep --entitlements "Resources/AuraMotion.entitlements" "${APP_DIR}"
+SIGN_IDENTITY="${AURAMOTION_SIGN_IDENTITY:--}"
+if [[ "${SIGN_IDENTITY}" == "-" ]]; then
+    echo "==> Ad-hoc signing: rebuilding changes the app's TCC identity."
+    echo "    Set AURAMOTION_SIGN_IDENTITY to a development certificate for stable privacy permissions."
+fi
+echo "==> Code signing application bundle..."
+codesign -s "${SIGN_IDENTITY}" --force --deep --entitlements "Resources/AuraMotion.entitlements" "${APP_DIR}"
 
 echo "==> Validation: Checking code signature..."
 codesign --verify --deep --strict "${APP_DIR}"

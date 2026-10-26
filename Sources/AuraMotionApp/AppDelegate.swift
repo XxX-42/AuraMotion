@@ -22,6 +22,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
         // 2. Create Status Item
         self.statusItemController = StatusItemController(hudWindow: hud)
 
+        // Post-event access is required for cursor and keyboard output. Keep
+        // the request controls visible when macOS has not granted that access.
+        if !AppEnvironment.shared.permissionsManager.checkPermissions().isPostEventAuthorized {
+            self.statusItemController?.showSettingsWindow()
+        }
+
         // 3. Register environment observer
         let env = AppEnvironment.shared
         env.observer = self

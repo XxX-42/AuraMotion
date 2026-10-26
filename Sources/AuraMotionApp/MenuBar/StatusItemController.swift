@@ -17,6 +17,10 @@ public final class StatusItemController: NSObject {
         setupMenu()
     }
 
+    public func showSettingsWindow() {
+        openSettings()
+    }
+
     private func setupMenu() {
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "hand.point.up.fill", accessibilityDescription: "AuraMotion Pro")
@@ -89,7 +93,7 @@ public final class StatusItemController: NSObject {
     @objc private func openSettings() {
         if settingsWindow == nil {
             let win = NSWindow(
-                contentRect: NSRect(x: 150, y: 150, width: 440, height: 460),
+                contentRect: NSRect(x: 150, y: 150, width: 500, height: 560),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false

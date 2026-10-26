@@ -26,9 +26,7 @@ public protocol AppEnvironmentObserver: AnyObject, Sendable {
 
 /// Central coordinator for AuraMotion.
 /// Enforces a strict single-queue ownership model for interaction state on interactionQueue.
-public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorkerDelegate, GestureStateMachineDelegate, InputArbitratorDelegate, @unchecked Sendable {
-    public static let shared = AppEnvironment()
-
+public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorkerDelegate, GestureStateMachi
     // Dedicated serial queue for all interaction state and FSM transitions
     public let interactionQueue = DispatchQueue(label: "com.auramotion.interaction", qos: .userInteractive)
     private let safetyQueue = DispatchQueue(label: "com.auramotion.safety", qos: .userInteractive)

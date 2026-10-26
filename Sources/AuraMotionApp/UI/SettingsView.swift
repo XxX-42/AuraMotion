@@ -1,9 +1,13 @@
 import SwiftUI
+import AppKit
 import AuraMotionCore
 
 public struct SettingsView: View {
     @State private var settings = AppEnvironment.shared.currentSettings
     @State private var permissions = AppEnvironment.shared.permissionsManager.checkPermissions()
+    @State private var postEventRequestMessage: String?
+    @State private var postEventRequestSucceeded = false
+    @State private var isRequestingPostEventAccess = false
 
     public init() {}
 
@@ -22,12 +26,14 @@ public struct SettingsView: View {
                     }
                 }
                 HStack {
-                    Text("Accessibility Control:")
+                    Text("Computer Control:")
                     Spacer()
                     Text(permissions.isAccessibilityTrusted ? "Granted" : "Denied")
                         .foregroundColor(permissions.isAccessibilityTrusted ? .green : .red)
                     if !permissions.isAccessibilityTrusted {
-                        Button("Open Settings") {
+                        Button("Request") {
+                            NSApplication.shared.activate(ignoringOtherApps: true)
+                            AppEnvironment.shared.permissionsManager.requestAccessibilityIfNeeded()
                             AppEnvironment.shared.permissionsManager.openSystemSettingsAccessibility()
                         }
                     }
@@ -38,9 +44,22 @@ public struct SettingsView: View {
                     Text(permissions.isPostEventAuthorized ? "Granted" : "Required")
                         .foregroundColor(permissions.isPostEventAuthorized ? .green : .orange)
                     if !permissions.isPostEventAuthorized {
-                        Button("Request") {
-                            AppEnvironment.shared.permissionsManager.requestPostEventAccess()
-                            refreshPermissions()
+                        Button(isRequestingPostEventAccess ? "Requesting…" : "Request") {
+                            requestPostEventAccess()
+                        }
+                        .disabled(isRequestingPostEventAccess)
+                    }
+                }
+                if let postEventRequestMessage {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(postEventRequestMessage)
+                            .font(.caption)
+                            .foregroundColor(postEventRequestSucceeded ? .green : .orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !postEventRequestSucceeded {
+                            Button("Open Control Settings") {
+                                AppEnvironment.shared.permissionsManager.openSystemSettingsAccessibility()
+                            }
                         }
                     }
                 }
@@ -95,7 +114,7 @@ public struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 440, height: 460)
+        .frame(width: 500, height: 560)
         .onChange(of: settings) { _, newSettings in
             AppEnvironment.shared.updateSettings(newSettings)
         }
@@ -103,9 +122,16 @@ public struct SettingsView: View {
             settings = AppEnvironment.shared.currentSettings
             refreshPermissions()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshPermissions()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .auraMotionPermissionsDidChange)) { note in
             if let state = note.object as? PermissionsState {
                 permissions = state
+                if state.isPostEventAuthorized {
+                    postEventRequestSucceeded = true
+                    postEventRequestMessage = "Input event posting is authorized."
+                }
             } else {
                 refreshPermissions()
             }
@@ -114,5 +140,32 @@ public struct SettingsView: View {
 
     private func refreshPermissions() {
         permissions = AppEnvironment.shared.permissionsManager.checkPermissions()
+    }
+
+    private func requestPostEventAccess() {
+        guard !isRequestingPostEventAccess else { return }
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        isRequestingPostEventAccess = true
+        postEventRequestSucceeded = false
+        postEventRequestMessage = "Requesting input event access from macOS…"
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            let requestGranted = AppEnvironment.shared.permissionsManager.requestPostEventAccess()
+            let updatedPermissions = AppEnvironment.shared.permissionsManager.checkPermissions()
+            permissions = updatedPermissions
+            isRequestingPostEventAccess = false
+            postEventRequestSucceeded = updatedPermissions.isPostEventAuthorized
+
+            if updatedPermissions.isPostEventAuthorized {
+                postEventRequestMessage = "Input event posting is authorized."
+            } else if requestGranted {
+                postEventRequestMessage = "macOS returned from the request, but event posting is not active yet. Approve any system alert, then wait for the status to refresh."
+            } else {
+                let pane = AppEnvironment.shared.permissionsManager.controlPermissionSettingsName
+                postEventRequestMessage = "macOS has not granted computer input control. Enable AuraMotion in Privacy & Security → \(pane). If its switch is already on after an app update, turn it off and on, then quit and reopen AuraMotion."
+                AppEnvironment.shared.permissionsManager.openSystemSettingsAccessibility()
+            }
+        }
     }
 }
