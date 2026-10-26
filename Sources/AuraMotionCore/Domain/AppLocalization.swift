@@ -157,6 +157,7 @@ public enum L10n {
         "Recording camera sample…": "正在采集相机样本…",
         "Preparing camera sample… {seconds}": "相机采样准备中… {seconds} 秒后等待手部跟踪",
         "Waiting for a tracked pointer…": "等待有效指针跟踪…",
+        "Waiting for a tracked pointer… {seconds}": "等待有效指针跟踪… 剩余 {seconds} 秒",
         "Recording camera sample… {seconds}": "正在采集相机样本… {seconds} 秒",
         "Cancel Sample": "取消采样",
         "No tracked pointer was detected within 30 seconds.": "30 秒内未检测到有效指针，采样已取消。",

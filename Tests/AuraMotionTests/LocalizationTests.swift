@@ -98,6 +98,7 @@ final class LocalizationTests: XCTestCase {
             "Start movement setup", "Step {current} of 3", "Step {current} of 6", "Stop Sample", "Swipe Action:",
             "System Health", "System Telemetry & Diagnostics", "TRACKING", "TRACKING LOST - INPUT RELEASED",
             "Waiting for a tracked pointer…",
+            "Waiting for a tracked pointer… {seconds}",
             "Thermal Quality Stage:",
             "Three short recordings learn your resting tremor and movement speeds. Control pauses during setup; camera video is not saved.",
             "Toggle Floating HUD", "Touch your thumb tip to your index fingertip.",
