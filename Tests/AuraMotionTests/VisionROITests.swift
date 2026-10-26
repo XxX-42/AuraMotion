@@ -35,6 +35,51 @@ final class VisionROITests: XCTestCase {
         XCTAssertLessThanOrEqual(region.maxY, 1)
     }
 
+    func testROIRegionRelativeCoordinatesMapBackToFullImage() {
+        let roi = CGRect(x: 0.4, y: 0.2, width: 0.5, height: 0.6)
+        let point = VisionROI.fullImagePoint(
+            fromVisionPoint: CGPoint(x: 0.6, y: 0.5),
+            region: roi,
+            usedFullFrame: false,
+            isMirrored: false
+        )
+
+        XCTAssertEqual(point.x, 0.7, accuracy: 0.0001)
+        XCTAssertEqual(point.y, 0.5, accuracy: 0.0001)
+    }
+
+    func testMirroredROICoordinatesUnmirrorMapAndRemirror() {
+        let roi = CGRect(x: 0.4, y: 0.2, width: 0.5, height: 0.6)
+        let point = VisionROI.fullImagePoint(
+            fromVisionPoint: CGPoint(x: 0.4, y: 0.5),
+            region: roi,
+            usedFullFrame: false,
+            isMirrored: true
+        )
+
+        XCTAssertEqual(point.x, 0.3, accuracy: 0.0001)
+        XCTAssertEqual(point.y, 0.5, accuracy: 0.0001)
+    }
+
+    func testFullFrameCoordinatesKeepTheExistingMirrorMappingExactly() {
+        let point = CGPoint(x: 0.63, y: 0.27)
+        let unmirrored = VisionROI.fullImagePoint(
+            fromVisionPoint: point,
+            region: VisionROI.fullFrame,
+            usedFullFrame: true,
+            isMirrored: false
+        )
+        let mirrored = VisionROI.fullImagePoint(
+            fromVisionPoint: point,
+            region: VisionROI.fullFrame,
+            usedFullFrame: true,
+            isMirrored: true
+        )
+
+        XCTAssertEqual(unmirrored, point)
+        XCTAssertEqual(mirrored, CGPoint(x: 0.37, y: 0.27))
+    }
+
     func testROIUsesFullImageLandmarksAndFallsBackImmediatelyAfterLoss() {
         var settings = CursorExperimentSettings()
         settings.visionROIEnabled = true

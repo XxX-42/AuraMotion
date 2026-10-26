@@ -3,7 +3,11 @@ import Foundation
 
 public enum CursorExperimentReplayMode: String, Codable, Sendable, CaseIterable {
     case baseline
+    case stableRelativeOnly
+    case filterDragQuantization
+    case adaptive
     case optimized
+    case fullSeven
 }
 
 public struct CursorExperimentReplayRow: Codable, Sendable, Equatable {
@@ -132,6 +136,8 @@ public struct CursorExperimentReplaySummary: Codable, Sendable, Equatable {
     public let frameCount: Int
     public let sampleCount: Int
     public let assumedPointerStateFrames: Int
+    /// Number of transitions into `.trackingLost` in the captured interaction state.
+    public let trackingLossTransitionCount: Int
     public let effectiveFPS: CursorExperimentMetricValue
     public let inferenceP50Milliseconds: CursorExperimentMetricValue
     public let inferenceP95Milliseconds: CursorExperimentMetricValue
@@ -224,11 +230,31 @@ public enum CursorExperimentReplayEvaluator {
 
         let baseline = evaluate(recording, mode: .baseline)
         let optimized = evaluate(recording, mode: .optimized)
+        return report(for: recording, runs: [baseline, optimized])
+    }
+
+    /// Adds controlled module groups to the same recorded trace for tuning studies.
+    /// The normal camera A/B export remains the two-run Baseline/Optimized report.
+    public static func evaluateSweep(_ recording: CursorExperimentRecording) throws -> CursorExperimentReplayReport {
+        guard recording.schemaVersion == CursorExperimentRecording.currentSchemaVersion else {
+            throw CursorExperimentReplayError.unsupportedSchema(recording.schemaVersion)
+        }
+        guard !recording.frames.isEmpty else { throw CursorExperimentReplayError.emptyRecording }
+        let modes: [CursorExperimentReplayMode] = [
+            .baseline, .stableRelativeOnly, .filterDragQuantization, .adaptive, .optimized, .fullSeven
+        ]
+        return report(for: recording, runs: modes.map { evaluate(recording, mode: $0) })
+    }
+
+    private static func report(
+        for recording: CursorExperimentRecording,
+        runs: [CursorExperimentReplayRun]
+    ) -> CursorExperimentReplayReport {
         return CursorExperimentReplayReport(
             sessionID: recording.sessionID,
             source: recording.source,
             calibrationProfile: recording.metadata.calibrationProfile,
-            runs: [baseline, optimized]
+            runs: runs
         )
     }
 
@@ -236,8 +262,7 @@ public enum CursorExperimentReplayEvaluator {
         _ recording: CursorExperimentRecording,
         mode: CursorExperimentReplayMode
     ) -> CursorExperimentReplayRun {
-        var settings = CursorExperimentSettings()
-        settings.applyPreset(mode == .baseline ? .baseline : .optimized)
+        let settings = settings(for: mode)
 
         let profile = recording.metadata.calibrationProfile
         let center = CGPoint(x: profile.displayBounds.midX, y: profile.displayBounds.midY)
@@ -295,6 +320,39 @@ public enum CursorExperimentReplayEvaluator {
         return CursorExperimentReplayRun(mode: mode, settings: settings, rows: rows, summary: summary)
     }
 
+    private static func settings(for mode: CursorExperimentReplayMode) -> CursorExperimentSettings {
+        var settings = CursorExperimentSettings()
+        switch mode {
+        case .baseline:
+            settings.applyPreset(.baseline)
+        case .stableRelativeOnly:
+            settings.preset = .custom
+            settings.stableAnchorEnabled = true
+            settings.relativeMappingEnabled = true
+        case .filterDragQuantization:
+            settings.preset = .custom
+            settings.stableAnchorEnabled = true
+            settings.relativeMappingEnabled = true
+            settings.lowSpeedQuantizationEnabled = true
+            settings.separateDragTuningEnabled = true
+            settings.optimizedOneEuroEnabled = true
+        case .adaptive:
+            settings.preset = .custom
+            settings.stableAnchorEnabled = true
+            settings.relativeMappingEnabled = true
+            settings.adaptiveDeadzoneEnabled = true
+            settings.lowSpeedQuantizationEnabled = true
+            settings.separateDragTuningEnabled = true
+            settings.optimizedOneEuroEnabled = true
+        case .optimized:
+            settings.applyPreset(.optimized)
+        case .fullSeven:
+            settings.applyPreset(.optimized)
+            settings.velocityGainEnabled = true
+        }
+        return settings.normalized()
+    }
+
     private static func summarize(
         _ recording: CursorExperimentRecording,
         rows: [CursorExperimentReplayRow],
@@ -314,6 +372,10 @@ public enum CursorExperimentReplayEvaluator {
         let fullFrameCount = recording.frames.compactMap(\.roi).filter(\.usedFullFrame).count
         let roiFallbackCount = recording.frames.compactMap(\.roi).filter { $0.fallbackReason != nil }.count
         let roiKnown = recording.frames.contains { $0.roi != nil }
+        let trackingLossTransitionCount = recording.frames.enumerated().reduce(into: 0) { count, entry in
+            let previousState: GestureState? = entry.offset > 0 ? recording.frames[entry.offset - 1].state : nil
+            if entry.element.state == .trackingLost && previousState != .trackingLost { count += 1 }
+        }
 
         var statistics: [String: CursorExperimentJointStatistics] = [:]
         for joint in jointNames {
@@ -321,14 +383,12 @@ public enum CursorExperimentReplayEvaluator {
                 guard let sample = frame.sample, let point = sample.joint(joint) else { return nil }
                 return Self.finite(point)
             }
-            let stationaryPoints = recording.frames.compactMap { frame -> CGPoint? in
-                guard declaredPhase(for: frame, recording: recording) == .stationary,
-                      let point = frame.sample?.joint(joint) else { return nil }
-                return Self.finite(point)
+            let stationarySegments = stationaryPointSegments(recording: recording, rows: rows) { frame, _ in
+                frame.sample?.joint(joint)
             }
             statistics[joint.rawValue] = CursorExperimentJointStatistics(
                 allObservations: axisStatistics(allPoints, unit: "normalized_image_units"),
-                stationaryObservations: stationaryAxisStatistics(stationaryPoints, joint: joint.rawValue)
+                stationaryObservations: stationaryAxisStatistics(stationarySegments, joint: joint.rawValue)
             )
         }
 
@@ -336,34 +396,31 @@ public enum CursorExperimentReplayEvaluator {
             guard let sample = frame.sample else { return nil }
             return Self.palmCentroid(sample)
         }
-        let stationaryPalmPoints = recording.frames.compactMap { frame -> CGPoint? in
-            guard declaredPhase(for: frame, recording: recording) == .stationary,
-                  let sample = frame.sample else { return nil }
+        let stationaryPalmSegments = stationaryPointSegments(recording: recording, rows: rows) { frame, _ in
+            guard let sample = frame.sample else { return nil }
             return Self.palmCentroid(sample)
         }
         statistics["palmCentroid"] = CursorExperimentJointStatistics(
             allObservations: axisStatistics(palmPoints, unit: "normalized_image_units"),
-            stationaryObservations: stationaryAxisStatistics(stationaryPalmPoints, joint: "palmCentroid")
+            stationaryObservations: stationaryAxisStatistics(stationaryPalmSegments, joint: "palmCentroid")
         )
 
         let pointerPoints = rows.compactMap(\.rawAnchor)
-        let stationaryPointerPoints = zip(recording.frames, rows).compactMap { frame, row -> CGPoint? in
-            guard declaredPhase(for: frame, recording: recording) == .stationary else { return nil }
-            return row.rawAnchor
+        let stationaryPointerSegments = stationaryPointSegments(recording: recording, rows: rows) { _, row in
+            row.rawAnchor
         }
         statistics["finalPointerAnchor"] = CursorExperimentJointStatistics(
             allObservations: axisStatistics(pointerPoints, unit: "Quartz_points"),
-            stationaryObservations: stationaryAxisStatistics(stationaryPointerPoints, joint: "finalPointerAnchor", unit: "Quartz_points")
+            stationaryObservations: stationaryAxisStatistics(stationaryPointerSegments, joint: "finalPointerAnchor", unit: "Quartz_points")
         )
 
         let cursorPoints = rows.compactMap(\.cursor)
-        let stationaryCursorPoints = zip(recording.frames, rows).compactMap { frame, row -> CGPoint? in
-            guard declaredPhase(for: frame, recording: recording) == .stationary else { return nil }
-            return row.cursor
+        let stationaryCursorSegments = stationaryPointSegments(recording: recording, rows: rows) { _, row in
+            row.cursor
         }
         statistics["cursorOutput"] = CursorExperimentJointStatistics(
             allObservations: axisStatistics(cursorPoints, unit: "Quartz_points"),
-            stationaryObservations: stationaryAxisStatistics(stationaryCursorPoints, joint: "cursorOutput", unit: "Quartz_points")
+            stationaryObservations: stationaryAxisStatistics(stationaryCursorSegments, joint: "cursorOutput", unit: "Quartz_points")
         )
 
         let targets = targetMetrics(recording.frames, rows: rows)
@@ -371,6 +428,7 @@ public enum CursorExperimentReplayEvaluator {
             frameCount: recording.frames.count,
             sampleCount: recording.frames.filter { $0.sample != nil }.count,
             assumedPointerStateFrames: assumedStateCount,
+            trackingLossTransitionCount: trackingLossTransitionCount,
             effectiveFPS: fps,
             inferenceP50Milliseconds: percentileMetric(inference, fraction: 0.50, unit: "milliseconds", missing: "No inference timing was recorded."),
             inferenceP95Milliseconds: percentileMetric(inference, fraction: 0.95, unit: "milliseconds", missing: "No inference timing was recorded."),
@@ -391,7 +449,7 @@ public enum CursorExperimentReplayEvaluator {
             residentMemoryBytes: .unavailable("Resident memory requires a process sampler during the run (for example scripts/measure_process.py).", unit: "bytes"),
             calibrationProfileIsRecorded: recording.metadata.calibrationProfileIsRecorded,
             initialCursorWasAssumed: recording.metadata.initialCursorPosition == nil,
-            interpretationNote: "All-observation sigma and displacement describe the full trace. They are jitter only for frames explicitly labeled stationary or a recording declared for stationary hold. A declared purpose does not provide target coordinates. Target and task metrics require recorded ground-truth annotations. Inference timing, CPU, memory, and mailbox drops are unavailable when not captured."
+            interpretationNote: "All-observation sigma and displacement describe the full trace. Stationary statistics include only labeled, pointer-active frames and are computed within uninterrupted stationary segments; inactive/lost frames and transitions are excluded. A declared purpose does not provide target coordinates. Target and task metrics require recorded ground-truth annotations. Inference timing, CPU, memory, and mailbox drops are unavailable when not captured."
         )
     }
 
@@ -402,9 +460,85 @@ public enum CursorExperimentReplayEvaluator {
         frame.groundTruth?.phase ?? recording.metadata.declaredTaskPhase
     }
 
-    private static func stationaryAxisStatistics(_ points: [CGPoint], joint: String, unit: String = "normalized_image_units") -> CursorExperimentAxisStatistics {
+    /// Collect stationary points only while the sample was actively driving the pointer.
+    /// Inactive/lost frames, phase changes, tracking-ID changes, and long gaps split runs.
+    private static func stationaryPointSegments(
+        recording: CursorExperimentRecording,
+        rows: [CursorExperimentReplayRow],
+        point: (CursorExperimentFrame, CursorExperimentReplayRow) -> CGPoint?
+    ) -> [[CGPoint]] {
+        var segments: [[CGPoint]] = []
+        var current: [CGPoint] = []
+        var previousTimestamp: Double?
+        var previousTrackingID: Int?
+        var hasSeenActiveObservation = false
+        var skipNextObservationAfterBoundary = false
+
+        func flush(markBoundary: Bool = false) {
+            if !current.isEmpty { segments.append(current) }
+            current.removeAll(keepingCapacity: true)
+            previousTimestamp = nil
+            previousTrackingID = nil
+            if markBoundary && hasSeenActiveObservation { skipNextObservationAfterBoundary = true }
+        }
+
+        for (frame, row) in zip(recording.frames, rows) {
+            guard declaredPhase(for: frame, recording: recording) == .stationary,
+                  frame.state == .pointer,
+                  let sample = frame.sample,
+                  row.motionPhase == .pointer,
+                  frame.timestamp.isFinite,
+                  let observed = finite(point(frame, row)) else {
+                flush(markBoundary: true)
+                continue
+            }
+
+            if frame.source == .camera {
+                guard let motion = frame.motion,
+                      motion.phase == .pointer,
+                      motion.timestamp.isFinite,
+                      abs(motion.timestamp - frame.timestamp) < 0.000_001 else {
+                    flush(markBoundary: true)
+                    continue
+                }
+            }
+
+            if let previousTimestamp,
+               frame.timestamp <= previousTimestamp || frame.timestamp - previousTimestamp > 0.25 {
+                flush(markBoundary: true)
+            }
+            if let previousTrackingID, previousTrackingID != sample.trackingID {
+                flush(markBoundary: true)
+            }
+            if skipNextObservationAfterBoundary {
+                // The first valid frame after loss, a phase transition, a new hand,
+                // or a long gap can still carry the previous cursor output while
+                // the existing controller confirms/rebases the new anchor.
+                skipNextObservationAfterBoundary = false
+                hasSeenActiveObservation = true
+                previousTimestamp = frame.timestamp
+                previousTrackingID = sample.trackingID
+                continue
+            }
+
+            current.append(observed)
+            hasSeenActiveObservation = true
+            previousTimestamp = frame.timestamp
+            previousTrackingID = sample.trackingID
+        }
+        flush()
+        return segments
+    }
+
+    private static func stationaryAxisStatistics(
+        _ segments: [[CGPoint]],
+        joint: String,
+        unit: String = "normalized_image_units"
+    ) -> CursorExperimentAxisStatistics {
+        let validSegments = segments.map { $0.filter { $0.x.isFinite && $0.y.isFinite } }.filter { !$0.isEmpty }
+        let points = validSegments.flatMap { $0 }
         guard !points.isEmpty else {
-            let reason = "No frames labeled stationary by the frame or recording purpose were recorded for \(joint)."
+            let reason = "No valid pointer-active observations labeled stationary were recorded for \(joint)."
             return CursorExperimentAxisStatistics(
                 observationCount: 0,
                 unit: unit,
@@ -415,7 +549,43 @@ public enum CursorExperimentReplayEvaluator {
                 maximumStepDisplacement: .unavailable(reason, unit: unit)
             )
         }
-        return axisStatistics(points, unit: unit)
+        let count = Double(points.count)
+        var sumSquaredX = 0.0
+        var sumSquaredY = 0.0
+        var steps: [Double] = []
+        for segment in validSegments {
+            let meanX = segment.reduce(0.0) { $0 + Double($1.x) } / Double(segment.count)
+            let meanY = segment.reduce(0.0) { $0 + Double($1.y) } / Double(segment.count)
+            sumSquaredX += segment.reduce(0.0) { $0 + pow(Double($1.x) - meanX, 2) }
+            sumSquaredY += segment.reduce(0.0) { $0 + pow(Double($1.y) - meanY, 2) }
+            steps.append(contentsOf: zip(segment, segment.dropFirst()).map {
+                hypot(Double($1.x - $0.x), Double($1.y - $0.y))
+            })
+        }
+
+        let rmsStep: CursorExperimentMetricValue
+        let p95Step: CursorExperimentMetricValue
+        let maxStep: CursorExperimentMetricValue
+        if steps.isEmpty {
+            let reason = "At least two valid pointer-active observations within one stationary segment are required."
+            rmsStep = .unavailable(reason, unit: unit)
+            p95Step = .unavailable(reason, unit: unit)
+            maxStep = .unavailable(reason, unit: unit)
+        } else {
+            rmsStep = .init(value: sqrt(steps.reduce(0) { $0 + $1 * $1 } / Double(steps.count)), unit: unit)
+            p95Step = .init(value: percentile(steps, fraction: 0.95), unit: unit)
+            maxStep = .init(value: steps.max(), unit: unit)
+        }
+
+        return CursorExperimentAxisStatistics(
+            observationCount: points.count,
+            unit: unit,
+            sigmaX: .init(value: sqrt(sumSquaredX / count), unit: unit),
+            sigmaY: .init(value: sqrt(sumSquaredY / count), unit: unit),
+            rmsStepDisplacement: rmsStep,
+            p95StepDisplacement: p95Step,
+            maximumStepDisplacement: maxStep
+        )
     }
 
     private static func axisStatistics(_ points: [CGPoint], unit: String) -> CursorExperimentAxisStatistics {
@@ -594,6 +764,11 @@ public enum CursorExperimentReplayEvaluator {
         point.x.isFinite && point.y.isFinite ? point : nil
     }
 
+    private static func finite(_ point: CGPoint?) -> CGPoint? {
+        guard let point else { return nil }
+        return finite(point)
+    }
+
     private static func distance(_ lhs: CGPoint, _ rhs: CGPoint) -> Double {
         hypot(Double(lhs.x - rhs.x), Double(lhs.y - rhs.y))
     }
@@ -617,15 +792,19 @@ public enum CursorExperimentSyntheticTrace {
         let duration = 7.5
         let count = Int(duration * Double(fps)) + 1
         let mapper = CoordinateMapper(profile: profile)
-        let initial = CGPoint(x: profile.displayBounds.midX, y: profile.displayBounds.midY)
         var frames: [CursorExperimentFrame] = []
         frames.reserveCapacity(count)
 
         func mapped(_ point: CGPoint) -> CGPoint { mapper.mapToQuartzGlobal(visionPoint: point) }
-        let slowStart = mapped(CGPoint(x: 0.50, y: 0.50))
-        let slowEnd = mapped(CGPoint(x: 0.68, y: 0.50))
-        let fastEnd = mapped(CGPoint(x: 0.90, y: 0.50))
-        let dragEnd = mapped(CGPoint(x: 0.70, y: 0.50))
+        // The legacy Baseline cursor maps the index-tip anchor, which this fixture
+        // places +0.12x/+0.10y from the translated hand center. Use that same screen
+        // trajectory as task truth and start both controller runs at its first point.
+        // This keeps target errors from measuring a preset-specific origin offset.
+        let initial = mapped(CGPoint(x: 0.62, y: 0.60))
+        let slowStart = initial
+        let slowEnd = mapped(CGPoint(x: 0.74, y: 0.60))
+        let fastEnd = mapped(CGPoint(x: 0.84, y: 0.60))
+        let dragEnd = slowEnd
 
         for index in 0..<count {
             let timestamp = 1_000.0 + Double(index) / Double(fps)
@@ -650,29 +829,29 @@ public enum CursorExperimentSyntheticTrace {
                 phase = .slowMove
                 segmentID = "slow-1"; segmentStart = slowStart; segmentEnd = slowEnd
                 let progress = (time - 1.0) / 2.5
-                normalizedX = 0.50 + 0.18 * progress
+                normalizedX = 0.50 + 0.12 * progress
                 state = .pointer
             } else if time < 4.25 {
                 phase = .fastMove
                 segmentID = "fast-1"; segmentStart = slowEnd; segmentEnd = fastEnd
                 let progress = (time - 3.5) / 0.75
-                normalizedX = 0.68 + 0.22 * progress
+                normalizedX = 0.62 + 0.10 * progress
                 state = .pointer
             } else if time < 4.75 {
                 phase = .acquisition
                 segmentID = "fast-1"; segmentStart = slowEnd; segmentEnd = fastEnd
-                normalizedX = 0.90
+                normalizedX = 0.72
                 state = .pointer
             } else if time < 6.75 {
                 phase = .dragging
                 segmentID = "drag-1"; segmentStart = fastEnd; segmentEnd = dragEnd
                 let progress = (time - 4.75) / 2.0
-                normalizedX = 0.90 - 0.20 * progress
+                normalizedX = 0.72 - 0.10 * progress
                 state = .dragging
             } else {
                 phase = .stationary
                 segmentID = nil; segmentStart = nil; segmentEnd = nil
-                normalizedX = 0.70
+                normalizedX = 0.62
                 state = .pointer
             }
             if index == clickEventIndex { event = .click }
@@ -685,7 +864,7 @@ public enum CursorExperimentSyntheticTrace {
                 : 0.00025 * sin(Double(index) * 0.41)
             let observed = CGPoint(x: base.x + jitter, y: base.y + 0.0008 * sin(Double(index) * 0.31))
             let sample = makeHandSample(timestamp: timestamp, center: observed)
-            let target = mapped(base)
+            let target = mapped(CGPoint(x: normalizedX + 0.12, y: 0.60))
             let groundTruth = CursorExperimentGroundTruth(
                 target: target,
                 phase: phase,
@@ -748,6 +927,12 @@ public enum CursorExperimentRecordingCodec {
         let data = try Data(contentsOf: url)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
+        if let envelope = try? decoder.decode(CursorExperimentRecordingEnvelope.self, from: data) {
+            if let legacySource, envelope.recording.source != legacySource {
+                throw CursorExperimentReplayError.sourceMismatch
+            }
+            return envelope.recording
+        }
         if let current = try? decoder.decode(CursorExperimentRecording.self, from: data) {
             if let legacySource, current.source != legacySource { throw CursorExperimentReplayError.sourceMismatch }
             return current
@@ -773,4 +958,8 @@ public enum CursorExperimentRecordingCodec {
             frames: frames
         )
     }
+}
+
+private struct CursorExperimentRecordingEnvelope: Decodable {
+    let recording: CursorExperimentRecording
 }

@@ -35,7 +35,9 @@ public enum HandObservationDecoder {
         presentationTime: Double,
         isEstimatedTime: Bool,
         trackingID: Int,
-        isMirrored: Bool
+        isMirrored: Bool,
+        regionOfInterest: CGRect = VisionROI.fullFrame,
+        usedFullFrame: Bool = true
     ) -> HandSample {
         var jointsDict: [HandJointName: HandJoint] = [:]
         var totalConfidence: Float = 0.0
@@ -43,8 +45,12 @@ public enum HandObservationDecoder {
 
         for (vnName, domainName) in keyMap {
             if let point = try? observation.recognizedPoint(vnName), point.confidence > 0.1 {
-                // Apply camera mirroring if requested: mirror X coordinate in normalized space
-                let pos = isMirrored ? CGPoint(x: 1.0 - point.location.x, y: point.location.y) : point.location
+                let pos = VisionROI.fullImagePoint(
+                    fromVisionPoint: point.location,
+                    region: regionOfInterest,
+                    usedFullFrame: usedFullFrame,
+                    isMirrored: isMirrored
+                )
                 let joint = HandJoint(name: domainName, position: pos, confidence: point.confidence)
                 jointsDict[domainName] = joint
                 totalConfidence += point.confidence

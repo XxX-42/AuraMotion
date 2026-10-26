@@ -74,6 +74,8 @@ public enum L10n {
         "Start Target Test": "开始目标测试",
         "Start Drag Test": "开始拖动测试",
         "Export Task Results": "导出任务结果",
+        "FSM state:": "手势状态：",
+        "Tagged events: move {move}, down {down}, drag {drag}, up {up}; external {external}": "已标记事件：移动 {move}、按下 {down}、拖动 {drag}、抬起 {up}；外部输入 {external}",
         "Ready": "就绪",
         "Target": "目标",
         "Drag from the left circle to the right circle.": "从左侧圆圈拖动到右侧圆圈。",

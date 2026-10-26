@@ -89,6 +89,10 @@ final class CursorReplayTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
         let document = try decoder.decode(CursorExperimentExportDocument.self, from: data)
         XCTAssertEqual(document.recording, recording)
+        XCTAssertEqual(try CursorExperimentRecordingCodec.load(from: url), recording)
+        XCTAssertThrowsError(try CursorExperimentRecordingCodec.load(from: url, legacySource: .camera)) {
+            XCTAssertEqual($0 as? CursorExperimentReplayError, .sourceMismatch)
+        }
         XCTAssertEqual(document.replay.runs.map(\.mode), [.baseline, .optimized])
         XCTAssertEqual(document.recording.frames.count, recording.frames.count)
     }

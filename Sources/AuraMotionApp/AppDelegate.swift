@@ -51,6 +51,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
         env.start()
     }
 
+    public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        statusItemController?.showSettingsWindow()
+        sender.activate(ignoringOtherApps: true)
+        return true
+    }
+
     public func applicationWillTerminate(_ notification: Notification) {
         AppEnvironment.shared.stop()
     }

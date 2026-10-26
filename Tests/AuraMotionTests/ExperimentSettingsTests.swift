@@ -17,7 +17,7 @@ final class ExperimentSettingsTests: XCTestCase {
         XCTAssertTrue(appSettings.cursorExperiment.relativeMappingEnabled)
         XCTAssertTrue(appSettings.cursorExperiment.adaptiveDeadzoneEnabled)
         XCTAssertTrue(appSettings.cursorExperiment.lowSpeedQuantizationEnabled)
-        XCTAssertTrue(appSettings.cursorExperiment.velocityGainEnabled)
+        XCTAssertFalse(appSettings.cursorExperiment.velocityGainEnabled)
         XCTAssertTrue(appSettings.cursorExperiment.separateDragTuningEnabled)
         XCTAssertTrue(appSettings.cursorExperiment.optimizedOneEuroEnabled)
         XCTAssertFalse(appSettings.cursorExperiment.visionROIEnabled)

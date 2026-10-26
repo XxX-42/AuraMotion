@@ -5,9 +5,7 @@ import Foundation
 public enum VisionROI {
     public static let fullFrame = CGRect(x: 0, y: 0, width: 1, height: 1)
 
-    /// Builds a normalized rectangle around already full-image landmark coordinates.
-    /// Vision returns `VNRecognizedPoint.location` in normalized coordinates for the
-    /// input image, even when request.regionOfInterest narrows the search region.
+    /// Builds a normalized rectangle around full-image landmark coordinates.
     public static func expanded(
         around bounds: CGRect,
         scale: Double,
@@ -27,6 +25,31 @@ public enum VisionROI {
         let originY = min(max(0, centerY - height / 2), 1 - height)
 
         return CGRect(x: originX, y: originY, width: width, height: height)
+    }
+
+    /// Converts a Vision point returned for an ROI request back to normalized
+    /// full-image coordinates, then applies the app's camera-mirror convention.
+    /// Full-frame points preserve the existing decoder mapping exactly.
+    public static func fullImagePoint(
+        fromVisionPoint point: CGPoint,
+        region: CGRect,
+        usedFullFrame: Bool,
+        isMirrored: Bool
+    ) -> CGPoint {
+        let mirroredPoint = CGPoint(x: isMirrored ? 1 - point.x : point.x, y: point.y)
+        guard !usedFullFrame,
+              point.x.isFinite, point.y.isFinite,
+              isFinite(region), region.width > 0, region.height > 0 else {
+            return mirroredPoint
+        }
+
+        // Vision's ROI coordinates are relative to the request crop. Undo the
+        // UI mirror before applying the unmirrored request rectangle, then put
+        // the app-facing mirror back on the full-image result.
+        let unmirroredX = isMirrored ? 1 - point.x : point.x
+        let fullX = region.minX + unmirroredX * region.width
+        let fullY = region.minY + point.y * region.height
+        return CGPoint(x: isMirrored ? 1 - fullX : fullX, y: fullY)
     }
 
     /// Returns the full-image normalized bounds of the recognized hand landmarks.

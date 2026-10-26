@@ -59,7 +59,9 @@ public final class VisionHandPoseProvider: HandPoseProvider, @unchecked Sendable
                     presentationTime: presentationTime,
                     isEstimatedTime: isEstimatedTime,
                     trackingID: trackingID,
-                    isMirrored: isMirrored
+                    isMirrored: isMirrored,
+                    regionOfInterest: roiRequest.region,
+                    usedFullFrame: roiRequest.usedFullFrame
                 )
             }
             roiController.completeRequest(with: sample, isMirrored: isMirrored)

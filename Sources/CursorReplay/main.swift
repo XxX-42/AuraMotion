@@ -7,6 +7,7 @@ private struct Options {
     var output: URL?
     var source: CursorExperimentSource?
     var synthetic = false
+    var sweep = false
     var fps = 60
     var showHelp = false
 }
@@ -34,9 +35,15 @@ private enum CursorReplayCommand {
                 recording = try CursorExperimentRecordingCodec.load(from: input, legacySource: options.source)
             }
 
-            let report = try CursorExperimentReplayEvaluator.evaluate(recording)
+            let report: CursorExperimentReplayReport
+            if options.sweep {
+                report = try CursorExperimentReplayEvaluator.evaluateSweep(recording)
+            } else {
+                report = try CursorExperimentReplayEvaluator.evaluate(recording)
+            }
             _ = try CursorExperimentMetricsExporter.write(report, to: output)
-            print("Wrote \(recording.source.rawValue) baseline+optimized replay to \(output.path)")
+            let replayKind = options.sweep ? "module sweep" : "baseline+optimized replay"
+            print("Wrote \(recording.source.rawValue) \(replayKind) to \(output.path)")
         } catch {
             FileHandle.standardError.write(Data("CursorReplay: \(error.localizedDescription)\n".utf8))
             if error is CLIError { printHelp(to: .standardError) }
@@ -54,6 +61,8 @@ private enum CursorReplayCommand {
                 options.showHelp = true
             case "--synthetic":
                 options.synthetic = true
+            case "--sweep":
+                options.sweep = true
             case "--input":
                 index += 1
                 guard index < arguments.count else { throw CLIError.usage("--input needs a file path.") }
@@ -86,7 +95,7 @@ private enum CursorReplayCommand {
     private static func printHelp(to handle: FileHandle = .standardOutput) {
         let help = """
         Usage:
-          swift run CursorReplay --synthetic --output /tmp/cursor-replay.csv [--fps 60]
+          swift run CursorReplay --synthetic --output /tmp/cursor-replay.csv [--fps 60] [--sweep]
           swift run CursorReplay --input session.json --source camera --output report.json
 
         New CursorExperimentRecording JSON includes its source and needs no --source.

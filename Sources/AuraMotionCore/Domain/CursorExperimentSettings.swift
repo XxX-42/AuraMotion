@@ -56,7 +56,10 @@ public struct CursorExperimentSettings: Codable, Sendable, Equatable {
         relativeMappingEnabled = enabled
         adaptiveDeadzoneEnabled = enabled
         lowSpeedQuantizationEnabled = enabled
-        velocityGainEnabled = enabled
+        // The measured candidate keeps velocity gain opt-in: on the same
+        // synthetic target/slow/fast trace, gain caused severe lag and target
+        // error despite reducing stationary movement.
+        velocityGainEnabled = false
         separateDragTuningEnabled = enabled
         optimizedOneEuroEnabled = enabled
         // Vision ROI needs independent measured opt-in; MediaPipe never runs by default.

@@ -48,6 +48,13 @@ private struct ValidationRun: Codable, Sendable {
     let source: String
     let unit: String
     let started: Date
+    let completed: Bool
+    let activeTask: String?
+    let activeTargetFraction: Double?
+    let activeElapsedMs: Double?
+    let activeMaxStepPoints: Double?
+    let dragActive: Bool
+    let dragHasMoved: Bool
     let settingsAtStart: CursorExperimentSettings
     let widthPoints: Double
     let heightPoints: Double
@@ -63,11 +70,18 @@ private final class PointerValidationModel: ObservableObject {
     @Published var statusKey = "Ready"
     @Published var lastExportURL: URL?
     @Published var index = 0
+    @Published private(set) var hudState: AuraMotionCore.GestureState = .idle
+    @Published private(set) var taggedMoveCount = 0
+    @Published private(set) var taggedDownCount = 0
+    @Published private(set) var taggedDragCount = 0
+    @Published private(set) var taggedUpCount = 0
+    @Published private(set) var externalEventCount = 0
     var size = CGSize(width: 720, height: 350)
     private(set) var mode: Mode = .targets
     private var events: [ValidationEvent] = []
     private var trials: [ValidationTrial] = []
     private var runs: [ValidationRun] = []
+    private var hasCurrentRun = false
     private var settingsAtStart = CursorExperimentSettings()
     private var started = Date()
     private var trialStarted: Double = 0
@@ -86,9 +100,15 @@ private final class PointerValidationModel: ObservableObject {
     }
 
     func start(_ mode: Mode) {
+        archiveCurrentRunIfNeeded()
         self.mode = mode
         events.removeAll(keepingCapacity: true)
         trials.removeAll(keepingCapacity: true)
+        taggedMoveCount = 0
+        taggedDownCount = 0
+        taggedDragCount = 0
+        taggedUpCount = 0
+        externalEventCount = 0
         settingsAtStart = AppEnvironment.shared.currentSettings.cursorExperiment.normalized()
         started = Date()
         index = 0
@@ -100,20 +120,34 @@ private final class PointerValidationModel: ObservableObject {
         maxStep = 0
         overshoot = 0
         trialStarted = CACurrentMediaTime()
+        hasCurrentRun = true
         statusKey = mode == .targets ? "Target" : "Drag from the left circle to the right circle."
         running = true
     }
 
     func stop() {
         running = false
-        dragging = false
-        dragDownPoint = nil
-        dragHasMoved = false
+        guard hasCurrentRun else { return }
+        let partialRun = makeRun(completed: false)
+        appendRun(partialRun)
+        hasCurrentRun = false
+        persistRuns([partialRun], updateStatus: false)
     }
 
     func observe(_ point: CGPoint, kind: String, gesture: Bool) {
         guard running, point.x.isFinite, point.y.isFinite else { return }
         let time = CACurrentMediaTime()
+        if gesture {
+            switch kind {
+            case "move": taggedMoveCount += 1
+            case "down": taggedDownCount += 1
+            case "drag": taggedDragCount += 1
+            case "up": taggedUpCount += 1
+            default: break
+            }
+        } else {
+            externalEventCount += 1
+        }
         if events.count < capacity {
             events.append(ValidationEvent(timestamp: time, x: point.x, y: point.y, kind: kind,
                 source: gesture ? "AuraMotion_tagged_event" : "external_event",
@@ -158,6 +192,10 @@ private final class PointerValidationModel: ObservableObject {
             } else if kind == "up", dragging {
                 let dragDistance = dragDownPoint.map { hypot(point.x - $0.x, point.y - $0.y) } ?? 0
                 guard dragHasMoved || dragDistance >= 8 else {
+                    trials.append(ValidationTrial(task: "drag_no_motion_attempt", targetFraction: 0.9,
+                        errorPoints: hypot(point.x - goal.x, point.y - goal.y), overshootPoints: max(0, overshoot),
+                        elapsedMs: (time - trialStarted) * 1000, maxStepPoints: maxStep,
+                        targetReached: false))
                     dragging = false
                     dragDownPoint = nil
                     dragHasMoved = false
@@ -181,19 +219,30 @@ private final class PointerValidationModel: ObservableObject {
         }
     }
 
+    func updateHUDState(_ state: AuraMotionCore.GestureState) {
+        guard hudState != state else { return }
+        hudState = state
+    }
+
     private func finish() {
-        runs.append(ValidationRun(source: "live_tagged_CGEvent_target_task", unit: "Quartz/AppKit logical points (not Retina backing pixels)",
-            started: started, settingsAtStart: settingsAtStart, widthPoints: size.width, heightPoints: size.height,
-            trials: trials, events: events, eventLimitReached: events.count == capacity))
-        if runs.count > 32 { runs.removeFirst(runs.count - 32) }
+        let completedRun = makeRun(completed: true)
+        appendRun(completedRun)
+        hasCurrentRun = false
         stop()
         statusKey = "Task complete"
+        persistRuns([completedRun], updateStatus: false)
     }
 
     func export() {
-        guard !runs.isEmpty else { statusKey = "No task results yet"; return }
-        let immutableRuns = runs
-        DispatchQueue.global(qos: .utility).async {
+        var exportRuns = runs
+        if hasCurrentRun { exportRuns.append(makeRun(completed: false)) }
+        guard !exportRuns.isEmpty else { statusKey = "No task results yet"; return }
+        let immutableRuns = Array(exportRuns.suffix(32))
+        persistRuns(immutableRuns, updateStatus: true)
+    }
+
+    private func persistRuns(_ immutableRuns: [ValidationRun], updateStatus: Bool) {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
             do {
                 let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                     .appendingPathComponent("AuraMotion/Experiments/TargetTasks", isDirectory: true)
@@ -203,11 +252,49 @@ private final class PointerValidationModel: ObservableObject {
                 encoder.dateEncodingStrategy = .iso8601
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 try encoder.encode(immutableRuns).write(to: url, options: .atomic)
-                DispatchQueue.main.async { [weak self] in self?.lastExportURL = url; self?.statusKey = "Results exported" }
+                DispatchQueue.main.async { [weak self] in
+                    self?.lastExportURL = url
+                    if updateStatus { self?.statusKey = "Results exported" }
+                }
             } catch {
                 DispatchQueue.main.async { [weak self] in self?.statusKey = "Metrics export failed." }
             }
         }
+    }
+
+    private func appendRun(_ run: ValidationRun) {
+        runs.append(run)
+        if runs.count > 32 { runs.removeFirst(runs.count - 32) }
+    }
+
+    private func archiveCurrentRunIfNeeded() {
+        guard hasCurrentRun else { return }
+        let partialRun = makeRun(completed: false)
+        appendRun(partialRun)
+        hasCurrentRun = false
+        persistRuns([partialRun], updateStatus: false)
+    }
+
+    private func makeRun(completed: Bool) -> ValidationRun {
+        let activeTask: String? = completed ? nil : (mode == .targets ? "target_acquisition" : "drag_attempt")
+        return ValidationRun(
+            source: "live_tagged_CGEvent_target_task",
+            unit: "Quartz/AppKit logical points (not Retina backing pixels)",
+            started: started,
+            completed: completed,
+            activeTask: activeTask,
+            activeTargetFraction: completed ? nil : (mode == .targets ? fractions[min(index, 2)] : 0.9),
+            activeElapsedMs: completed ? nil : max(0, (CACurrentMediaTime() - trialStarted) * 1000),
+            activeMaxStepPoints: completed ? nil : maxStep,
+            dragActive: !completed && dragging,
+            dragHasMoved: !completed && dragHasMoved,
+            settingsAtStart: settingsAtStart,
+            widthPoints: size.width,
+            heightPoints: size.height,
+            trials: trials,
+            events: events,
+            eventLimitReached: events.count == capacity
+        )
     }
 }
 
@@ -220,15 +307,33 @@ private struct PointerValidationView: View {
             HStack {
                 Button(L10n.tr("Start Target Test")) { model.start(.targets) }
                 Button(L10n.tr("Start Drag Test")) { model.start(.drag) }
-                Button(L10n.tr("Export Task Results")) { model.export() }.disabled(model.running)
+                Button(L10n.tr("Export Task Results")) { model.export() }
                 Spacer()
                 Text(L10n.tr(model.statusKey))
                 if model.running, model.mode == .targets { Text("\(model.index + 1) / 3") }
             }
+            HStack(spacing: 8) {
+                Text(L10n.tr("FSM state:"))
+                Text(model.hudState.displayName).fontWeight(.semibold)
+            }
+            Text(L10n.tr(
+                "Tagged events: move {move}, down {down}, drag {drag}, up {up}; external {external}",
+                replacing: [
+                    "{move}": "\(model.taggedMoveCount)",
+                    "{down}": "\(model.taggedDownCount)",
+                    "{drag}": "\(model.taggedDragCount)",
+                    "{up}": "\(model.taggedUpCount)",
+                    "{external}": "\(model.externalEventCount)"
+                ]
+            )).font(.caption.monospacedDigit())
             ValidationCanvas(model: model).frame(minWidth: 500, minHeight: 300)
             if let url = model.lastExportURL { Text(url.path).font(.caption).textSelection(.enabled) }
         }
         .padding(16)
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("HUDSnapshotUpdated")).receive(on: DispatchQueue.main)) { note in
+            guard let snapshot = note.object as? HUDSnapshot else { return }
+            model.updateHUDState(snapshot.state)
+        }
         .onDisappear { model.stop() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
             if (note.object as? NSWindow)?.identifier?.rawValue == "AuraMotion Pointer Validation" { model.stop() }

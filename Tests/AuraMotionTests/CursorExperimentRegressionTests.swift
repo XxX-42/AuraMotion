@@ -41,9 +41,52 @@ final class CursorExperimentRegressionTests: XCTestCase {
         XCTAssertTrue(first.runs[1].settings.hasCursorExperiments)
         XCTAssertTrue(first.runs[0].rows.contains { $0.rawAnchor != nil && $0.filtered != nil && $0.cursor != nil })
         XCTAssertTrue(first.runs[1].rows.contains { $0.rawAnchor != nil && $0.filtered != nil && $0.cursor != nil })
+        let initialTarget = try XCTUnwrap(recording.frames.first?.groundTruth?.target)
+        for run in first.runs {
+            let initialCursor = try XCTUnwrap(run.rows.first?.cursor)
+            XCTAssertLessThan(hypot(initialCursor.x - initialTarget.x, initialCursor.y - initialTarget.y), 5)
+        }
         XCTAssertNotNil(first.runs[0].summary.targetMetrics.targetErrorRMSPoints.value)
         XCTAssertNotNil(first.runs[0].summary.targetMetrics.cursorErrorAtClickP95Points.value)
         XCTAssertNotNil(first.runs[0].summary.targetMetrics.dragCursorContinuityRatio.value)
+    }
+
+    func testSweepSeparatesTheIndependentCursorFeatureGroups() throws {
+        let recording = CursorExperimentSyntheticTrace.makeRecording(fps: 10)
+        let report = try CursorExperimentReplayEvaluator.evaluateSweep(recording)
+        XCTAssertEqual(report.runs.map(\.mode), [
+            .baseline, .stableRelativeOnly, .filterDragQuantization, .adaptive, .optimized, .fullSeven
+        ])
+        XCTAssertTrue(report.runs.allSatisfy { $0.rows.map(\.timestamp) == recording.frames.map(\.timestamp) })
+
+        let relative = try XCTUnwrap(report.runs.first { $0.mode == .stableRelativeOnly }?.settings)
+        XCTAssertTrue(relative.stableAnchorEnabled)
+        XCTAssertTrue(relative.relativeMappingEnabled)
+        XCTAssertFalse(relative.adaptiveDeadzoneEnabled)
+        XCTAssertFalse(relative.lowSpeedQuantizationEnabled)
+        XCTAssertFalse(relative.separateDragTuningEnabled)
+        XCTAssertFalse(relative.optimizedOneEuroEnabled)
+        XCTAssertFalse(relative.velocityGainEnabled)
+
+        let filtered = try XCTUnwrap(report.runs.first { $0.mode == .filterDragQuantization }?.settings)
+        XCTAssertTrue(filtered.stableAnchorEnabled && filtered.relativeMappingEnabled)
+        XCTAssertTrue(filtered.lowSpeedQuantizationEnabled && filtered.separateDragTuningEnabled)
+        XCTAssertTrue(filtered.optimizedOneEuroEnabled)
+        XCTAssertFalse(filtered.adaptiveDeadzoneEnabled)
+        XCTAssertFalse(filtered.velocityGainEnabled)
+
+        let adaptive = try XCTUnwrap(report.runs.first { $0.mode == .adaptive }?.settings)
+        XCTAssertTrue(adaptive.adaptiveDeadzoneEnabled)
+        XCTAssertFalse(adaptive.velocityGainEnabled)
+
+        let optimized = try XCTUnwrap(report.runs.first { $0.mode == .optimized }?.settings)
+        XCTAssertTrue(optimized.hasCursorExperiments)
+        XCTAssertFalse(optimized.velocityGainEnabled)
+        XCTAssertFalse(optimized.visionROIEnabled)
+        XCTAssertFalse(optimized.mediaPipeBenchmarkEnabled)
+
+        let fullSeven = try XCTUnwrap(report.runs.first { $0.mode == .fullSeven }?.settings)
+        XCTAssertTrue(fullSeven.velocityGainEnabled)
     }
 
     func testRecorderUsesBoundedRingAndRejectsMixedSources() throws {
@@ -140,6 +183,116 @@ final class CursorExperimentRegressionTests: XCTestCase {
         }
     }
 
+    func testStationaryMetricsRequireActivePointerAndSplitOnLossIdentityAndGaps() throws {
+        let definitions: [(time: Double, state: GestureState, trackingID: Int?, x: CGFloat, phase: CursorMotionPhase)] = [
+            (100.000, .pointer, 1, 0.500, .pointer),
+            (100.033, .pointer, 1, 0.501, .pointer),
+            (100.066, .trackingLost, nil, 0.502, .frozen),
+            (100.099, .pointer, 2, 0.700, .pointer),
+            (100.132, .pointer, 2, 0.701, .pointer),
+            (100.165, .pointer, 2, 0.702, .frozen),
+            (100.198, .pointer, 2, 0.703, .pointer),
+            (100.600, .pointer, 2, 0.704, .pointer),
+            (100.633, .pointer, 2, 0.705, .pointer)
+        ]
+        let frames = definitions.map { definition -> CursorExperimentFrame in
+            let sample = definition.trackingID.map {
+                stationarySample(timestamp: definition.time, centerX: definition.x, trackingID: $0)
+            }
+            let motion = definition.phase == .pointer
+                ? CursorExperimentMotionSample(
+                    timestamp: definition.time,
+                    rawAnchor: CGPoint(x: definition.x * 1_000, y: 500),
+                    filtered: CGPoint(x: definition.x * 1_000, y: 500),
+                    cursor: CGPoint(x: definition.x * 1_000, y: 500),
+                    speed: 0,
+                    deadzone: 1,
+                    gain: 1,
+                    phase: .pointer
+                )
+                : CursorExperimentMotionSample(
+                    timestamp: definition.time,
+                    rawAnchor: CGPoint(x: definition.x * 1_000, y: 500),
+                    filtered: CGPoint(x: definition.x * 1_000, y: 500),
+                    cursor: CGPoint(x: definition.x * 1_000, y: 500),
+                    speed: 0,
+                    deadzone: 0,
+                    gain: 1,
+                    phase: .frozen
+                )
+            return CursorExperimentFrame(
+                timestamp: definition.time,
+                source: .camera,
+                sample: sample,
+                state: definition.state,
+                motion: motion
+            )
+        }
+        let recording = CursorExperimentRecording(
+            sessionID: "stationary-active-segments",
+            startTime: Date(timeIntervalSince1970: 0),
+            source: .camera,
+            durationLimitSeconds: 1,
+            capacity: frames.count,
+            metadata: CursorExperimentRecordingMetadata(declaredTaskPhase: .stationary),
+            frames: frames
+        )
+
+        let report = try CursorExperimentReplayEvaluator.evaluate(recording)
+        for run in report.runs {
+            let cursorStats = try XCTUnwrap(run.summary.jointStatistics["cursorOutput"]?.stationaryObservations)
+            let tipStats = try XCTUnwrap(run.summary.jointStatistics[HandJointName.indexTip.rawValue]?.stationaryObservations)
+            let cursorPath = run.rows.map { row in
+                row.cursor.map { String(format: "%.1f", Double($0.x)) } ?? "nil"
+            }.joined(separator: ",")
+            XCTAssertEqual(cursorStats.observationCount, 4)
+            XCTAssertEqual(tipStats.observationCount, 4)
+            XCTAssertLessThan(cursorStats.sigmaX.value ?? .infinity, 20, "\(run.mode.rawValue): \(cursorPath)")
+            XCTAssertLessThan(tipStats.sigmaX.value ?? .infinity, 0.01)
+            XCTAssertLessThan(cursorStats.maximumStepDisplacement.value ?? .infinity, 20, "\(run.mode.rawValue): \(cursorPath)")
+            XCTAssertEqual(run.summary.trackingLossTransitionCount, 1)
+            XCTAssertNil(run.summary.targetMetrics.targetErrorRMSPoints.value)
+        }
+    }
+
+    func testIdleAndFrozenCameraFramesDoNotCountAsStationaryJitter() throws {
+        let timestamp = 50.0
+        let sample = stationarySample(timestamp: timestamp, centerX: 0.5, trackingID: 3)
+        let frame = CursorExperimentFrame(
+            timestamp: timestamp,
+            source: .camera,
+            sample: sample,
+            state: .idle,
+            motion: CursorExperimentMotionSample(
+                timestamp: timestamp,
+                rawAnchor: CGPoint(x: 960, y: 540),
+                filtered: CGPoint(x: 960, y: 540),
+                cursor: CGPoint(x: 960, y: 540),
+                speed: 0,
+                deadzone: 0,
+                gain: 1,
+                phase: .frozen
+            )
+        )
+        let recording = CursorExperimentRecording(
+            sessionID: "idle-is-not-stationary-jitter",
+            startTime: Date(timeIntervalSince1970: 0),
+            source: .camera,
+            durationLimitSeconds: 1,
+            capacity: 1,
+            metadata: CursorExperimentRecordingMetadata(declaredTaskPhase: .stationary),
+            frames: [frame]
+        )
+
+        let report = try CursorExperimentReplayEvaluator.evaluate(recording)
+        for run in report.runs {
+            let stats = try XCTUnwrap(run.summary.jointStatistics["cursorOutput"]?.stationaryObservations)
+            XCTAssertEqual(stats.observationCount, 0)
+            XCTAssertNil(stats.sigmaX.value)
+            XCTAssertTrue(stats.sigmaX.unavailableReason?.contains("pointer-active") == true)
+        }
+    }
+
     func testExportIncludesRequiredReplayColumnsAndBothModes() throws {
         let recording = CursorExperimentSyntheticTrace.makeRecording(fps: 10)
         let report = try CursorExperimentReplayEvaluator.evaluate(recording)
@@ -156,5 +309,25 @@ final class CursorExperimentRegressionTests: XCTestCase {
 
     private func frame(_ timestamp: Double, source: CursorExperimentSource) -> CursorExperimentFrame {
         CursorExperimentFrame(timestamp: timestamp, source: source, sample: nil)
+    }
+
+    private func stationarySample(timestamp: Double, centerX: CGFloat, trackingID: Int) -> HandSample {
+        let joints: [HandJointName: HandJoint] = [
+            .wrist: HandJoint(name: .wrist, position: CGPoint(x: centerX, y: 0.30), confidence: 0.9),
+            .indexMCP: HandJoint(name: .indexMCP, position: CGPoint(x: centerX, y: 0.50), confidence: 0.9),
+            .middleMCP: HandJoint(name: .middleMCP, position: CGPoint(x: centerX + 0.04, y: 0.51), confidence: 0.9),
+            .ringMCP: HandJoint(name: .ringMCP, position: CGPoint(x: centerX - 0.04, y: 0.50), confidence: 0.9),
+            .littleMCP: HandJoint(name: .littleMCP, position: CGPoint(x: centerX - 0.08, y: 0.48), confidence: 0.9),
+            .indexTip: HandJoint(name: .indexTip, position: CGPoint(x: centerX + 0.12, y: 0.60), confidence: 0.9)
+        ]
+        return HandSample(
+            hostTimestamp: timestamp,
+            presentationTimeSeconds: timestamp,
+            isPresentationTimeEstimated: false,
+            joints: joints,
+            overallConfidence: 0.9,
+            estimatedHandedness: .right,
+            trackingID: trackingID
+        )
     }
 }
