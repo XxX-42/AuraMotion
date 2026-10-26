@@ -51,6 +51,9 @@ public struct GazeCalibration: Sendable {
     public let featureScale: [Double]
     public let xWeights: [Double]
     public let yWeights: [Double]
+    /// Iris-only weights use the same 9-column basis; columns 5...8 are zero.
+    public let irisXWeights: [Double]
+    public let irisYWeights: [Double]
 
     public static let nineTargets: [CGPoint] = [0.12, 0.5, 0.88].flatMap { y in [0.12, 0.5, 0.88].map { x in CGPoint(x: x, y: y) } }
     public enum Error: Swift.Error { case insufficientPoints, invalidData, insufficientVariation }
@@ -83,7 +86,20 @@ public struct GazeCalibration: Sendable {
             return total + pow(px - samples[index].target.x, 2) + pow(py - samples[index].target.y, 2)
         }
         guard sqrt(squaredError / n) < 0.22 else { throw Error.insufficientVariation }
-        return GazeCalibration(featureMean: means, featureScale: scales, xWeights: x, yWeights: y)
+        // Fit the same basis and solver, zeroing head and face-scale columns.
+        var irisMatrix = Array(repeating: Array(repeating: 0.0, count: 9), count: 9)
+        var irisBX = Array(repeating: 0.0, count: 9), irisBY = irisBX
+        for (i, original) in rows.enumerated() {
+            let row = Array(original.prefix(5)) + [0.0, 0.0, 0.0, 0.0]
+            for j in 0..<9 {
+                irisBX[j] += row[j] * samples[i].target.x; irisBY[j] += row[j] * samples[i].target.y
+                for k in 0..<9 { irisMatrix[j][k] += row[j] * row[k] }
+            }
+        }
+        for j in 1..<9 { irisMatrix[j][j] += 0.5 }
+        guard let irisX = solve(irisMatrix, irisBX), let irisY = solve(irisMatrix, irisBY) else { throw Error.invalidData }
+        return GazeCalibration(featureMean: means, featureScale: scales, xWeights: x, yWeights: y,
+                               irisXWeights: irisX, irisYWeights: irisY)
     }
 
     private static func solve(_ a: [[Double]], _ b: [Double]) -> [Double]? {
@@ -113,13 +129,57 @@ public struct GazeEstimate: Sendable {
     public let confidence: Float
 }
 
+public enum GazeEstimatorMode: Sendable, Equatable {
+    case legacyFullFeature
+    case irisDominant
+}
+
+public enum IrisDominantGazeConfiguration {
+    /// MVP tuning values; correction is bounded per screen-normalized axis.
+    public static let headCompensationWeight = 0.15
+    public static let maxNormalizedHeadCorrection = 0.05
+}
+
 public enum GazeEstimator {
-    public static func estimate(face: FaceSample, calibration: GazeCalibration, displayBounds: CGRect) -> GazeEstimate? {
-        guard let features = EyeFeatureExtractor.extract(face), displayBounds.width > 0, displayBounds.height > 0 else { return nil }
+    /// Normalized diagnostic components. A nil correction means the legacy
+    /// full-feature model is active, not that head contribution is zero.
+    public static func normalizedComponents(features: EyeFeatures, calibration: GazeCalibration,
+                                            mode: GazeEstimatorMode) -> (irisBase: CGPoint, headCorrection: CGPoint?, final: CGPoint)? {
         let values = [1.0] + zip(zip(features.vector, calibration.featureMean), calibration.featureScale).map { ($0.0.0 - $0.0.1) / $0.1 }
-        guard values.dropFirst().allSatisfy({ abs($0) <= 5 }) else { return nil }
-        let nx = zip(values, calibration.xWeights).reduce(0.0) { $0 + $1.0 * $1.1 }
-        let ny = zip(values, calibration.yWeights).reduce(0.0) { $0 + $1.0 * $1.1 }
+        guard values.count == 9, values.allSatisfy(\.isFinite),
+              calibration.xWeights.count == 9, calibration.yWeights.count == 9,
+              calibration.irisXWeights.count == 9, calibration.irisYWeights.count == 9 else { return nil }
+        let irisX = zip(values.prefix(5), calibration.irisXWeights.prefix(5)).reduce(0.0) { $0 + $1.0 * $1.1 }
+        let irisY = zip(values.prefix(5), calibration.irisYWeights.prefix(5)).reduce(0.0) { $0 + $1.0 * $1.1 }
+        let base = CGPoint(x: irisX, y: irisY)
+        switch mode {
+        case .legacyFullFeature:
+            // Preserve the original full-feature outlier gate and calculation.
+            guard values.dropFirst().allSatisfy({ abs($0) <= 5 }) else { return nil }
+            let nx = zip(values, calibration.xWeights).reduce(0.0) { $0 + $1.0 * $1.1 }
+            let ny = zip(values, calibration.yWeights).reduce(0.0) { $0 + $1.0 * $1.1 }
+            guard nx.isFinite, ny.isFinite else { return nil }
+            return (base, nil, CGPoint(x: nx, y: ny))
+        case .irisDominant:
+            // Head/scale outliers must not suppress eye-only tracking. The face
+            // extractor still validates landmarks; only iris terms use this gate.
+            guard values[1...4].allSatisfy({ abs($0) <= 5 }), irisX.isFinite, irisY.isFinite else { return nil }
+            let hx = (5...7).reduce(0.0) { $0 + values[$1] * calibration.xWeights[$1] }
+            let hy = (5...7).reduce(0.0) { $0 + values[$1] * calibration.yWeights[$1] }
+            let limit = IrisDominantGazeConfiguration.maxNormalizedHeadCorrection
+            let weight = IrisDominantGazeConfiguration.headCompensationWeight
+            let dx = max(-limit, min(limit, weight * hx))
+            let dy = max(-limit, min(limit, weight * hy))
+            guard dx.isFinite, dy.isFinite else { return nil }
+            return (base, CGPoint(x: dx, y: dy), CGPoint(x: irisX + dx, y: irisY + dy))
+        }
+    }
+
+    public static func estimate(face: FaceSample, calibration: GazeCalibration, displayBounds: CGRect,
+                                mode: GazeEstimatorMode = .legacyFullFeature) -> GazeEstimate? {
+        guard let features = EyeFeatureExtractor.extract(face), displayBounds.width > 0, displayBounds.height > 0,
+              let components = normalizedComponents(features: features, calibration: calibration, mode: mode) else { return nil }
+        let nx = components.final.x, ny = components.final.y
         guard nx.isFinite, ny.isFinite, (-0.25...1.25).contains(nx), (-0.25...1.25).contains(ny) else { return nil }
         return GazeEstimate(screenPoint: CGPoint(x: displayBounds.minX + nx * displayBounds.width, y: displayBounds.minY + ny * displayBounds.height), timestamp: face.timestamp, direction: nil,
                             confidence: Float(0.5 + 0.3 * min(1, max(0, features.faceScale / 0.3))))

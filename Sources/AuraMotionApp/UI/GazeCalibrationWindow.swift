@@ -9,7 +9,15 @@ import AuraMotionCore
 final class GazeDebugController: ObservableObject {
     static let shared = GazeDebugController()
     @Published var calibration: GazeCalibration?
+    @Published var estimatorMode: GazeEstimatorMode = .irisDominant {
+        didSet {
+            guard estimatorMode != oldValue else { return }
+            detector.reset(); fixation = .unavailable; spatial.clear()
+            receive(lastFace)
+        }
+    }
     @Published var estimate: GazeEstimate?
+    @Published var gazeDiagnostics = "Iris Base: —   Head correction: —   Final: —"
     @Published var fixation: FixationState = .unavailable
     @Published private(set) var spatial = HeadCenteredTargeting()
     @Published var status = "请先进行九点校准"
@@ -25,10 +33,18 @@ final class GazeDebugController: ObservableObject {
               mirrored == face.isMirrored, bounds == CGDisplayBounds(CGMainDisplayID()),
               CACurrentMediaTime() >= face.timestamp, CACurrentMediaTime() - face.timestamp < 0.3 else {
             estimate = nil; fixation = detector.update(nil)
+            gazeDiagnostics = "Iris Base: —   Head correction: —   Final: —"
             spatial.update(face: face, gaze: nil, fixation: fixation, displayBounds: CGDisplayBounds(CGMainDisplayID()), now: CACurrentMediaTime())
             return
         }
-        let value = GazeEstimator.estimate(face: face, calibration: calibration, displayBounds: bounds)
+        let value = GazeEstimator.estimate(face: face, calibration: calibration, displayBounds: bounds, mode: estimatorMode)
+        if let value, let features = EyeFeatureExtractor.extract(face),
+           let components = GazeEstimator.normalizedComponents(features: features, calibration: calibration, mode: estimatorMode) {
+            let correction = components.headCorrection.map { String(format: "%+.3f, %+.3f", $0.x, $0.y) } ?? "— (Legacy)"
+            let nx = (value.screenPoint.x - bounds.minX) / bounds.width
+            let ny = (value.screenPoint.y - bounds.minY) / bounds.height
+            gazeDiagnostics = String(format: "Iris Base: %.3f, %.3f   Head correction: %@   Final: %.3f, %.3f", components.irisBase.x, components.irisBase.y, correction, nx, ny)
+        } else { gazeDiagnostics = "Iris Base: —   Head correction: —   Final: —" }
         estimate = value
         fixation = detector.update(value)
         spatial.update(face: face, gaze: value, fixation: fixation, displayBounds: bounds, now: CACurrentMediaTime())
@@ -105,6 +121,18 @@ private struct GazeCalibrationView: View {
                         Button("关闭") { if active { controller.cancel() }; active = false; close() }
                         Text(controller.status).foregroundColor(.white.opacity(0.8))
                     }
+                    HStack {
+                        Text("Gaze Mode:").foregroundColor(.white)
+                        Picker("Gaze Mode", selection: $controller.estimatorMode) {
+                            Text("Legacy").tag(GazeEstimatorMode.legacyFullFeature)
+                            Text("Iris").tag(GazeEstimatorMode.irisDominant)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 150)
+                    }
+                    Text(controller.gazeDiagnostics).foregroundColor(.white.opacity(0.85))
+                        .font(.system(size: 12, design: .monospaced))
                     Text(message).foregroundColor(.white)
                     Spacer()
                 }
