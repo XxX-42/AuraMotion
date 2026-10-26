@@ -23,6 +23,7 @@ public final class SettingsRepository: @unchecked Sendable {
         var merged = mergeDefaults(defaults, with: saved)
         if var settings = decodeSettings(from: merged) {
             settings.cursorExperiment = settings.cursorExperiment.normalized()
+            settings.hudSkeletonScale = settings.hudSkeletonScale.isFinite ? min(3, max(0.5, settings.hudSkeletonScale)) : 1
             return settings
         }
 

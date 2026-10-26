@@ -21,6 +21,9 @@ public struct AppSettings: Sendable, Codable, Equatable {
     public var clutchDwellTime: TimeInterval
     public var preferredHandedness: EstimatedHandedness
     public var showHUD: Bool
+    public var hudShowsCamera: Bool
+    public var hudShowsJointNumbers: Bool
+    public var hudSkeletonScale: Double
     public var showClickFeedback: Bool
     public var hudSkeletonFPS: Int
     public var scrollInertiaEnabled: Bool
@@ -36,6 +39,9 @@ public struct AppSettings: Sendable, Codable, Equatable {
         clutchDwellTime: TimeInterval = 0.08,
         preferredHandedness: EstimatedHandedness = .right,
         showHUD: Bool = true,
+        hudShowsCamera: Bool = false,
+        hudShowsJointNumbers: Bool = false,
+        hudSkeletonScale: Double = 1,
         showClickFeedback: Bool = true,
         hudSkeletonFPS: Int = 30,
         scrollInertiaEnabled: Bool = true,
@@ -50,6 +56,9 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.clutchDwellTime = clutchDwellTime
         self.preferredHandedness = preferredHandedness
         self.showHUD = showHUD
+        self.hudShowsCamera = hudShowsCamera
+        self.hudShowsJointNumbers = hudShowsJointNumbers
+        self.hudSkeletonScale = hudSkeletonScale
         self.showClickFeedback = showClickFeedback
         self.hudSkeletonFPS = hudSkeletonFPS
         self.scrollInertiaEnabled = scrollInertiaEnabled

@@ -29,6 +29,33 @@ public enum HandJointName: String, CaseIterable, Sendable, Codable, CodingKeyRep
     case littlePIP
     case littleDIP
     case littleTip
+
+    /// Stable display numbering: wrist, then thumb through little finger.
+    public var landmarkNumber: Int {
+        switch self {
+        case .wrist: return 0
+        case .thumbCMC: return 1
+        case .thumbMP: return 2
+        case .thumbIP: return 3
+        case .thumbTip: return 4
+        case .indexMCP: return 5
+        case .indexPIP: return 6
+        case .indexDIP: return 7
+        case .indexTip: return 8
+        case .middleMCP: return 9
+        case .middlePIP: return 10
+        case .middleDIP: return 11
+        case .middleTip: return 12
+        case .ringMCP: return 13
+        case .ringPIP: return 14
+        case .ringDIP: return 15
+        case .ringTip: return 16
+        case .littleMCP: return 17
+        case .littlePIP: return 18
+        case .littleDIP: return 19
+        case .littleTip: return 20
+        }
+    }
 }
 
 /// A single detected 2D hand joint observation.

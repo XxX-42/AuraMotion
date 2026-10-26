@@ -16,6 +16,12 @@ public struct HUDSnapshot: Sendable {
     public var feedback: String? = nil
     public var commandMenu: CommandMenuSnapshot? = nil
     public var showHUD = true
+    public var hudShowsCamera = false
+    public var isCameraMirrored = true
+    public var cameraAspectRatio = 16.0 / 9.0
+    public var isVideoDataMirrored = false
+    public var hudShowsJointNumbers = false
+    public var hudSkeletonScale = 1.0
     public var clickFeedbackID: UInt64 = 0
     public var clickFeedbackLocation: CGPoint? = nil
     public var rawCursorLocation: CGPoint? = nil
@@ -487,6 +493,20 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         }
     }
 
+    /// Changes only the HUD drawing preferences on the interaction queue.
+    public func updateHUDJointDisplay(showNumbers: Bool? = nil, scale: Double? = nil) {
+        interactionQueue.async { [weak self] in
+            guard let self else { return }
+            var updated = self.currentSettings
+            if let showNumbers { updated.hudShowsJointNumbers = showNumbers }
+            if let scale, scale.isFinite { updated.hudSkeletonScale = min(3, max(0.5, scale)) }
+            guard updated != self.currentSettings else { return }
+            self.currentSettings = updated
+            self.settingsRepository.saveSettings(updated)
+            self.publishHUDSnapshot(force: true)
+        }
+    }
+
     private func visionSettingsDiffer(
         _ old: CursorExperimentSettings,
         _ new: CursorExperimentSettings
@@ -846,6 +866,12 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         }
         snapshot.commandMenu = stateMachine.commandMenu.snapshot
         snapshot.showHUD = currentSettings.showHUD
+        snapshot.hudShowsCamera = currentSettings.hudShowsCamera
+        snapshot.isCameraMirrored = currentSettings.isCameraMirrored
+        snapshot.cameraAspectRatio = capturePipeline.previewAspectRatio
+        snapshot.isVideoDataMirrored = capturePipeline.isVideoDataMirrored
+        snapshot.hudShowsJointNumbers = currentSettings.hudShowsJointNumbers
+        snapshot.hudSkeletonScale = currentSettings.hudSkeletonScale
         snapshot.rawCursorLocation = latestRawCursorLocation
         snapshot.cursorExperimentStatus = cursorController.cursorExperimentStatus
         snapshot.cursorDiagnostics = cursorController.lastDiagnostics

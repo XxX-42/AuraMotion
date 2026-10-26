@@ -15,7 +15,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
         let screenRect = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let hudRect = NSRect(x: screenRect.maxX - 240, y: screenRect.maxY - 220, width: 220, height: 200)
         let hud = FloatingHUDWindow(contentRect: hudRect)
-        hud.contentView = NSHostingView(rootView: HUDView())
+        hud.contentView = NSHostingView(rootView: HUDView(
+            onResize: { [weak hud] translation, finished in
+                hud?.resizeFromHandle(translation: translation, finished: finished)
+            },
+            onMove: { [weak hud] translation, finished in
+                hud?.moveFromHeader(translation: translation, finished: finished)
+            },
+            onRestoreSize: { [weak hud] in hud?.restoreDefaultSize() }
+        ))
         if AppEnvironment.shared.currentSettings.showHUD { hud.orderFrontRegardless() }
         self.hudWindow = hud
 

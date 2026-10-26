@@ -39,6 +39,8 @@ final class LocalizationTests: XCTestCase {
         let requiredKeys: Set<String> = [
             "%.0f ms", "%.1f s", "* Presentation timestamp anchored to host arrival clock",
             "A/B Metrics", "Absolute Legacy", "Accessibility control is required",
+            "HUD Display Mode", "Hand Skeleton Only", "Camera and Hand Skeleton", "Drag to resize",
+            "Joint Numbers", "Skeleton Size", "On", "Off",
             "Activation Delay:", "Adaptive Deadzone", "Advanced Tuning", "All windows",
             "All windows recognized", "An opt-in camera sample runs for 15 seconds. No camera video is saved.",
             "Arbitration Cooldown:", "AuraMotion Calibration", "AuraMotion Diagnostics",

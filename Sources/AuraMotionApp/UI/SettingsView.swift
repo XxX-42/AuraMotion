@@ -62,6 +62,15 @@ public struct SettingsView: View {
                 refreshPermissions()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("HUDSnapshotUpdated")).receive(on: DispatchQueue.main)) { note in
+            guard let snapshot = note.object as? HUDSnapshot else { return }
+            if settings.hudShowsJointNumbers != snapshot.hudShowsJointNumbers {
+                settings.hudShowsJointNumbers = snapshot.hudShowsJointNumbers
+            }
+            if settings.hudSkeletonScale != snapshot.hudSkeletonScale {
+                settings.hudSkeletonScale = snapshot.hudSkeletonScale
+            }
+        }
     }
 
     private var cursorExperimentBinding: Binding<CursorExperimentSettings> {
@@ -178,6 +187,10 @@ public struct SettingsView: View {
         GroupBox(label: Text(L10n.tr("HUD & Feedback"))) {
             VStack(alignment: .leading, spacing: 6) {
                 Toggle(L10n.tr("Show Floating HUD"), isOn: $settings.showHUD)
+                Picker(L10n.tr("HUD Display Mode"), selection: $settings.hudShowsCamera) {
+                    Text(L10n.tr("Hand Skeleton Only")).tag(false)
+                    Text(L10n.tr("Camera and Hand Skeleton")).tag(true)
+                }
                 Toggle(L10n.tr("Show Click Feedback Ripples"), isOn: $settings.showClickFeedback)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

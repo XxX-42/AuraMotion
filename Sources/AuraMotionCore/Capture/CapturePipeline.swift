@@ -22,6 +22,9 @@ public enum CaptureLifecycleState: String, Sendable {
 /// Manages AVCaptureSession with a bounded latest-frame mailbox and asynchronous, serialized lifecycle on captureQueue.
 public final class CapturePipeline: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
     private let captureSession = AVCaptureSession()
+    /// The existing session is shared with the optional HUD preview; callers must
+    /// not alter its inputs, outputs, or lifecycle.
+    public var previewSession: AVCaptureSession { captureSession }
     private let captureQueue = DispatchQueue(label: "com.auramotion.capture", qos: .userInteractive)
     private let timebaseSync = TimebaseSynchronizer()
 
@@ -32,6 +35,8 @@ public final class CapturePipeline: NSObject, AVCaptureVideoDataOutputSampleBuff
     private var lifecycleState: CaptureLifecycleState = .idle
     private var snapshotState: CaptureLifecycleState = .idle
     private let stateLock = NSLock()
+    private var videoAspectRatio: Double = 16.0 / 9.0
+    private var videoDataMirrored = false
 
     public override init() {
         super.init()
@@ -55,6 +60,18 @@ public final class CapturePipeline: NSObject, AVCaptureVideoDataOutputSampleBuff
     /// Thread-safe check whether capture session is actively running.
     public var isRunning: Bool {
         return state == .running
+    }
+
+    public var previewAspectRatio: Double {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return videoAspectRatio
+    }
+
+    public var isVideoDataMirrored: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return videoDataMirrored
     }
 
     public var synchronizationClock: CMClock? {
@@ -198,6 +215,12 @@ public final class CapturePipeline: NSObject, AVCaptureVideoDataOutputSampleBuff
         }
 
         activeDevice = selection.device
+        let dimensions = CMVideoFormatDescriptionGetDimensions(selection.format.formatDescription)
+        if dimensions.width > 0 && dimensions.height > 0 {
+            stateLock.lock()
+            videoAspectRatio = Double(dimensions.width) / Double(dimensions.height)
+            stateLock.unlock()
+        }
         let input = try AVCaptureDeviceInput(device: selection.device)
 
         if captureSession.canAddInput(input) {
@@ -237,6 +260,10 @@ public final class CapturePipeline: NSObject, AVCaptureVideoDataOutputSampleBuff
         from connection: AVCaptureConnection
     ) {
         guard lifecycleState == .running else { return }
+
+        stateLock.lock()
+        videoDataMirrored = connection.isVideoMirrored
+        stateLock.unlock()
 
         let arrivalHostTime = CACurrentMediaTime()
         let (hostTime, isEstimated) = timebaseSync.hostPresentationTime(

@@ -6,10 +6,12 @@ import AuraMotionCore
 /// Floats above normal application windows without stealing key focus.
 @MainActor
 public final class FloatingHUDWindow: NSPanel {
+    private var resizeStartFrame: NSRect?
+    private var moveStartFrame: NSRect?
     public init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
-            styleMask: [.nonactivatingPanel, .titled, .closable, .resizable, .fullSizeContentView],
+            styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -18,9 +20,49 @@ public final class FloatingHUDWindow: NSPanel {
         self.isFloatingPanel = true
         self.titleVisibility = .hidden
         self.titlebarAppearsTransparent = true
-        self.isMovableByWindowBackground = true
+        self.isMovableByWindowBackground = false
+        self.ignoresMouseEvents = false
         self.backgroundColor = .clear
         self.hasShadow = true
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        self.contentMinSize = NSSize(width: 220, height: 200)
+    }
+
+    public func restoreDefaultSize() {
+        let current = frame
+        setFrame(NSRect(x: current.maxX - 220, y: current.maxY - 200, width: 220, height: 200),
+                 display: true, animate: true)
+    }
+
+    public func resizeFromHandle(translation: CGSize, finished: Bool) {
+        if finished {
+            resizeStartFrame = nil
+            return
+        }
+        let start = resizeStartFrame ?? frame
+        resizeStartFrame = start
+        // Project the drag onto the window's diagonal so width and height
+        // always change by the same factor, regardless of pointer direction.
+        let ratio = CGFloat(AppEnvironment.shared.capturePipeline.previewAspectRatio)
+        let safeRatio = ratio.isFinite && ratio > 0 ? ratio : 16.0 / 9.0
+        let delta = (-translation.width + translation.height / safeRatio) / (1 + 1 / (safeRatio * safeRatio))
+        let visible = screen?.visibleFrame
+        let maximumWidth = visible.map {
+            max(220, min(start.maxX - $0.minX,
+                         start.width + (start.maxY - $0.minY - start.height) * safeRatio))
+        } ?? CGFloat.greatestFiniteMagnitude
+        let width = min(maximumWidth, max(220, start.width + delta))
+        let height = max(200, start.height + (width - start.width) / safeRatio)
+        setFrame(NSRect(x: start.maxX - width, y: start.maxY - height, width: width, height: height), display: true)
+    }
+
+    public func moveFromHeader(translation: CGSize, finished: Bool) {
+        if finished {
+            moveStartFrame = nil
+            return
+        }
+        let start = moveStartFrame ?? frame
+        moveStartFrame = start
+        setFrameOrigin(NSPoint(x: start.minX + translation.width, y: start.minY + translation.height))
     }
 }

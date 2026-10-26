@@ -26,9 +26,45 @@ final class SettingsMigrationTests: XCTestCase {
         let settings = SettingsRepository(userDefaults: defaults).loadSettings()
         XCTAssertFalse(settings.isCameraMirrored)
         XCTAssertFalse(settings.showHUD)
+        XCTAssertFalse(settings.hudShowsCamera)
+        XCTAssertFalse(settings.hudShowsJointNumbers)
+        XCTAssertEqual(settings.hudSkeletonScale, 1)
         XCTAssertEqual(settings.clutchDwellTime, 0.12)
         XCTAssertTrue(settings.isPalmSwipeEnabled)
         XCTAssertEqual(settings.swipeAction, .switchApp)
+    }
+
+    func testHUDCameraModeSurvivesReload() throws {
+        let name = "AuraMotion.MigrationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let repository = SettingsRepository(userDefaults: defaults)
+        var settings = AppSettings()
+        settings.hudShowsCamera = true
+        repository.saveSettings(settings)
+        XCTAssertTrue(repository.loadSettings().hudShowsCamera)
+    }
+
+    func testHUDJointDisplayPreferencesSurviveReloadAndClamp() throws {
+        let name = "AuraMotion.MigrationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let repository = SettingsRepository(userDefaults: defaults)
+        var settings = AppSettings()
+        settings.hudShowsJointNumbers = true
+        settings.hudSkeletonScale = 2.4
+        repository.saveSettings(settings)
+        XCTAssertTrue(repository.loadSettings().hudShowsJointNumbers)
+        XCTAssertEqual(repository.loadSettings().hudSkeletonScale, 2.4)
+        settings.hudSkeletonScale = 100
+        repository.saveSettings(settings)
+        XCTAssertEqual(repository.loadSettings().hudSkeletonScale, 3)
+    }
+
+    func testLandmarkNumbersAreStableAndUnique() {
+        XCTAssertEqual(HandJointName.allCases.map(\.landmarkNumber), Array(0...20))
+        XCTAssertEqual(HandJointName.indexTip.landmarkNumber, 8)
+        XCTAssertEqual(HandJointName.littleTip.landmarkNumber, 20)
     }
 
     func testExplicitSwipeSelectionSurvivesReload() throws {
