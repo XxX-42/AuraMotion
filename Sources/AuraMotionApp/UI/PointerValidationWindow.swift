@@ -82,6 +82,7 @@ private final class PointerValidationModel: ObservableObject {
     private var trials: [ValidationTrial] = []
     private var runs: [ValidationRun] = []
     private var hasCurrentRun = false
+    private let persistenceQueue = DispatchQueue(label: "com.auramotion.pointer-validation-export", qos: .utility)
     private var settingsAtStart = CursorExperimentSettings()
     private var started = Date()
     private var trialStarted: Double = 0
@@ -131,7 +132,7 @@ private final class PointerValidationModel: ObservableObject {
         let partialRun = makeRun(completed: false)
         appendRun(partialRun)
         hasCurrentRun = false
-        persistRuns([partialRun], updateStatus: false)
+        persistRuns(Array(runs.suffix(32)), updateStatus: false)
     }
 
     func observe(_ point: CGPoint, kind: String, gesture: Bool) {
@@ -230,7 +231,7 @@ private final class PointerValidationModel: ObservableObject {
         hasCurrentRun = false
         stop()
         statusKey = "Task complete"
-        persistRuns([completedRun], updateStatus: false)
+        persistRuns(Array(runs.suffix(32)), updateStatus: false)
     }
 
     func export() {
@@ -242,7 +243,7 @@ private final class PointerValidationModel: ObservableObject {
     }
 
     private func persistRuns(_ immutableRuns: [ValidationRun], updateStatus: Bool) {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        persistenceQueue.async { [weak self] in
             do {
                 let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                     .appendingPathComponent("AuraMotion/Experiments/TargetTasks", isDirectory: true)
@@ -272,7 +273,7 @@ private final class PointerValidationModel: ObservableObject {
         let partialRun = makeRun(completed: false)
         appendRun(partialRun)
         hasCurrentRun = false
-        persistRuns([partialRun], updateStatus: false)
+        persistRuns(Array(runs.suffix(32)), updateStatus: false)
     }
 
     private func makeRun(completed: Bool) -> ValidationRun {
