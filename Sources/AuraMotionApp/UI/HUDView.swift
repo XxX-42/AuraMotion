@@ -6,9 +6,10 @@ public struct HUDView: View {
     @ObservedObject private var localization = AppLocalization.shared
     @State private var snapshot: HUDSnapshot?
     #if DEBUG
+    @ObservedObject private var gazeController = GazeDebugController.shared
     @State private var showAuraMotion = true
     @State private var showMediaPipe = true
-    @State private var facePoints: [[Double]] = []
+    @State private var faceSample: FaceSample?
     @State private var faceStatus = "Starting"
     @State private var showCamera = false
     @State private var faceFPS: Double?
@@ -112,8 +113,8 @@ public struct HUDView: View {
                 }.buttonStyle(.plain).accessibilityValue(showAuraMotion ? "On" : "Off")
                 Button {
                     showMediaPipe.toggle()
-                    DebugFaceWorker.shared.setEnabled(showMediaPipe)
-                    if !showMediaPipe { facePoints = []; faceStatus = "Off"; faceFPS = nil; faceLastUpdate = nil }
+                    FaceInferenceWorker.shared.setEnabled(showMediaPipe)
+                    if !showMediaPipe { faceSample = nil; faceStatus = "Off"; faceFPS = nil; faceLastUpdate = nil; GazeDebugController.shared.receive(nil) }
                 } label: {
                     Text("MediaPipe · Face")
                         .font(.system(size: 11, weight: .semibold))
@@ -139,6 +140,11 @@ public struct HUDView: View {
 
                 #if DEBUG
                 HStack {
+                    Button("视线校准") { GazeDebugController.shared.show() }
+                        .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.yellow)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.white.opacity(0.08), in: Capsule())
                     Button { showCamera.toggle() } label: {
                         Text(L10n.tr("Camera Preview"))
                             .font(.system(size: 12, weight: .semibold))
@@ -215,7 +221,7 @@ public struct HUDView: View {
 
                     #if DEBUG
                     if showMediaPipe {
-                        FaceLandmarksView(points: facePoints, flipHorizontally: faceOverlayMirrored)
+                        FaceLandmarksView(points: faceSample?.landmarks ?? [], flipHorizontally: faceOverlayMirrored)
                             .allowsHitTesting(false)
                     }
                     #endif
@@ -242,6 +248,10 @@ public struct HUDView: View {
                 .layoutPriority(1)
 
                 #if DEBUG
+                if gazeController.calibration != nil {
+                    Text(gazeFixationLabel)
+                        .font(.system(size: 10)).foregroundColor(.yellow.opacity(0.85))
+                }
                 if showMediaPipe {
                     Text("MediaPipe Face: " + faceStatus)
                         .font(.system(size: 10)).foregroundColor(.white.opacity(0.65))
@@ -298,16 +308,18 @@ public struct HUDView: View {
             }
         }
         #if DEBUG
-        .onAppear { DebugFaceWorker.shared.setEnabled(showMediaPipe) }
-        .onDisappear { DebugFaceWorker.shared.setEnabled(false) }
-        .onReceive(NotificationCenter.default.publisher(for: DebugFaceWorker.notification)) { note in
+        .onReceive(NotificationCenter.default.publisher(for: FaceInferenceWorker.notification)) { note in
             guard showMediaPipe else { return }
-            facePoints = note.userInfo?["points"] as? [[Double]] ?? []
+            faceSample = note.userInfo?["sample"] as? FaceSample
+            GazeDebugController.shared.receive(faceSample)
             faceStatus = note.userInfo?["status"] as? String ?? "Unavailable"
             faceFPS = note.userInfo?["fps"] as? Double
             faceLastUpdate = faceStatus == "Active" || faceStatus == "No face" ? Date() : nil
         }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { fpsClock = $0 }
+        .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { now in
+            fpsClock = now
+            GazeDebugController.shared.clearIfStale()
+        }
         #endif
         .onChange(of: skeletonScale) { _, newValue in
             pendingScaleSave?.cancel()
@@ -338,6 +350,13 @@ public struct HUDView: View {
     }
 
     #if DEBUG
+    private var gazeFixationLabel: String {
+        switch gazeController.fixation {
+        case .unavailable: return "注视：不可用"
+        case .candidate: return "注视：候选"
+        case .focused: return "注视：稳定"
+        }
+    }
     private var faceFPSLabel: String {
         guard showMediaPipe, let last = faceLastUpdate, fpsClock.timeIntervalSince(last) < 3,
               let fps = faceFPS else { return "—" }
@@ -537,13 +556,13 @@ struct SkeletonView: View {
 
 #if DEBUG
 private struct FaceLandmarksView: View {
-    let points: [[Double]]
+    let points: [FaceLandmark]
     let flipHorizontally: Bool
     var body: some View {
         Canvas { context, size in
-            for point in points where point.count == 2 && point[0].isFinite && point[1].isFinite {
-                let x = (flipHorizontally ? 1 - point[0] : point[0]) * size.width
-                let y = point[1] * size.height
+            for point in points {
+                let x = CGFloat(flipHorizontally ? 1 - point.x : point.x) * size.width
+                let y = CGFloat(point.y) * size.height
                 context.fill(Path(ellipseIn: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)), with: .color(.green.opacity(0.8)))
             }
         }

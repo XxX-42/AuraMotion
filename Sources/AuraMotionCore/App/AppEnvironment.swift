@@ -193,6 +193,9 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         interactionQueue.async { [weak self] in
             guard let self, !self.hasStarted else { return }
             self.hasStarted = true
+            #if DEBUG
+            FaceInferenceWorker.shared.setEnabled(true)
+            #endif
             let perms = self.permissionsManager.checkPermissions()
             self.permissionsManager.startPeriodicRefresh()
 
@@ -296,6 +299,9 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
             self.stateMachine.transition(to: .paused)
             self.outputCoordinator.emergencyRelease()
             self.capturePipeline.stop()
+            #if DEBUG
+            FaceInferenceWorker.shared.setEnabled(false)
+            #endif
             self.inputArbitrator.stop()
             _ = self.experimentMetricsRecorder.stop()
         }
@@ -604,7 +610,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
 
     public func capturePipeline(_ pipeline: CapturePipeline, didOutput carrier: SampleCarrier) {
         #if DEBUG
-        DebugFaceWorker.shared.submit(carrier)
+        FaceInferenceWorker.shared.submit(carrier, isMirrored: pipeline.isVideoDataMirrored)
         #endif
         performanceTracker.recordCaptureFrame(
             timestamp: carrier.hostPresentationTime,
@@ -618,6 +624,9 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     }
 
     public func capturePipelineDidInterrupted(_ pipeline: CapturePipeline) {
+        #if DEBUG
+        FaceInferenceWorker.shared.invalidate()
+        #endif
         interactionQueue.async { [weak self] in
             guard let self = self else { return }
             self.stateMachine.transition(to: .trackingLost)

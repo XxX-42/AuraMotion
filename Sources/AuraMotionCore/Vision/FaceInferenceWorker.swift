@@ -5,9 +5,9 @@ import CoreMedia
 import Darwin
 
 /// Optional debug-only face inference. At most one frame is retained in flight.
-public final class DebugFaceWorker: @unchecked Sendable {
-    public static let shared = DebugFaceWorker()
-    public static let notification = Notification.Name("AuraMotionDebugFaceUpdated")
+public final class FaceInferenceWorker: @unchecked Sendable {
+    public static let shared = FaceInferenceWorker()
+    public static let notification = Notification.Name("AuraMotionFaceUpdated")
     private let queue = DispatchQueue(label: "com.auramotion.debug.face", qos: .utility)
     private let lock = NSLock()
     private var enabled = false
@@ -19,20 +19,38 @@ public final class DebugFaceWorker: @unchecked Sendable {
     private var output: FileHandle?
     private let context = CIContext()
     private var resultTimes: [TimeInterval] = []
+    private var latestSampleStorage: FaceSample?
+    /// Thread-safe latest validated result for future time-based fusion.
+    public var latestSample: FaceSample? {
+        lock.lock(); defer { lock.unlock() }
+        return latestSampleStorage
+    }
 
     public func setEnabled(_ value: Bool) {
         lock.lock()
         enabled = value
+        if !value { latestSampleStorage = nil }
         generation += 1
         lock.unlock()
         if !value {
             // A timeout on the worker queue bounds how long shutdown may wait.
             queue.async { [self] in stop() }
-            publish([], status: "Off")
+            publish(nil, status: "Off")
         }
     }
 
-    public func submit(_ carrier: SampleCarrier) {
+    /// Discard an old capture epoch without changing the user's enabled setting.
+    public func invalidate() {
+        lock.lock()
+        generation += 1
+        latestSampleStorage = nil
+        let active = enabled
+        lock.unlock()
+        queue.async { [self] in stop() }
+        if active { publish(nil, status: "Starting") }
+    }
+
+    public func submit(_ carrier: SampleCarrier, isMirrored: Bool) {
         lock.lock()
         let now = ProcessInfo.processInfo.systemUptime
         guard enabled, !busy, now >= lastFrame else { lock.unlock(); return }
@@ -51,14 +69,18 @@ public final class DebugFaceWorker: @unchecked Sendable {
                 let width = max(1, Int((image.extent.width * scale).rounded(.down)))
                 let height = max(1, Int((image.extent.height * scale).rounded(.down)))
                 let resized = image.transformed(by: CGAffineTransform(scaleX: CGFloat(width) / image.extent.width, y: CGFloat(height) / image.extent.height))
-                var data = Data(count: 8 + width * height * 4)
+                var data = Data(count: 24 + width * height * 4)
                 data.withUnsafeMutableBytes { raw in
                     guard let base = raw.baseAddress else { return }
+                    var id = carrier.frameID.bigEndian
+                    var timestamp = carrier.hostPresentationTime.bitPattern.bigEndian
                     var w = UInt32(width).bigEndian
                     var h = UInt32(height).bigEndian
-                    memcpy(base, &w, 4)
-                    memcpy(base.advanced(by: 4), &h, 4)
-                    context.render(resized, toBitmap: base.advanced(by: 8), rowBytes: width * 4,
+                    memcpy(base, &id, 8)
+                    memcpy(base.advanced(by: 8), &timestamp, 8)
+                    memcpy(base.advanced(by: 16), &w, 4)
+                    memcpy(base.advanced(by: 20), &h, 4)
+                    context.render(resized, toBitmap: base.advanced(by: 24), rowBytes: width * 4,
                                    bounds: CGRect(x: 0, y: 0, width: width, height: height),
                                    format: .BGRA8, colorSpace: CGColorSpaceCreateDeviceRGB())
                 }
@@ -82,21 +104,29 @@ public final class DebugFaceWorker: @unchecked Sendable {
                     result.append(contentsOf: bytes)
                     if result.count > 100_000 { throw FaceError.failed }
                 }
-                let points = try JSONDecoder().decode([[Double]].self, from: result)
-                lock.lock(); let stillEnabled = enabled && generation == token; lock.unlock()
+                let response = try JSONDecoder().decode(FaceWorkerResponse.self, from: result)
+                let sample = try response.sample(expectedFrameID: carrier.frameID,
+                                                 expectedHostTime: carrier.hostPresentationTime,
+                                                 isEstimated: carrier.isEstimatedTime,
+                                                 isMirrored: isMirrored)
+                lock.lock()
+                let stillEnabled = enabled && generation == token
+                if stillEnabled { latestSampleStorage = sample }
+                lock.unlock()
                 if stillEnabled {
                     let now = ProcessInfo.processInfo.systemUptime
                     resultTimes.append(now)
                     resultTimes.removeAll { now - $0 > 2 }
                     let fps: Double? = resultTimes.count >= 2 && now > resultTimes[0]
                         ? Double(resultTimes.count - 1) / (now - resultTimes[0]) : nil
-                    publish(points, status: points.isEmpty ? "No face" : "Active", fps: fps)
+                    publish(sample, status: sample == nil ? "No face" : "Active", fps: fps)
                 }
             } catch {
                 stop()
+                lock.lock(); latestSampleStorage = nil; lock.unlock()
                 lock.lock(); lastFrame = ProcessInfo.processInfo.systemUptime + 4; lock.unlock()
                 lock.lock(); let stillEnabled = enabled && generation == token; lock.unlock()
-                if stillEnabled { publish([], status: "Unavailable") }
+                if stillEnabled { publish(nil, status: "Unavailable") }
             }
         }
     }
@@ -151,9 +181,10 @@ public final class DebugFaceWorker: @unchecked Sendable {
         if let process, process.isRunning { process.terminate() }
         input = nil; output = nil; process = nil
     }
-    private func publish(_ points: [[Double]], status: String, fps: Double? = nil) {
+    private func publish(_ sample: FaceSample?, status: String, fps: Double? = nil) {
         DispatchQueue.main.async {
-            var info: [String: Any] = ["points": points, "status": status]
+            var info: [String: Any] = ["status": status]
+            if let sample { info["sample"] = sample }
             if let fps { info["fps"] = fps }
             NotificationCenter.default.post(name: Self.notification, object: nil, userInfo: info)
         }

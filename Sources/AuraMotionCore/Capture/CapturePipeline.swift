@@ -37,6 +37,8 @@ public final class CapturePipeline: NSObject, AVCaptureVideoDataOutputSampleBuff
     private let stateLock = NSLock()
     private var videoAspectRatio: Double = 16.0 / 9.0
     private var videoDataMirrored = false
+    // Confined to captureQueue; IDs remain monotonic across capture restarts.
+    private var nextFrameID: UInt64 = 0
 
     public override init() {
         super.init()
@@ -272,10 +274,12 @@ public final class CapturePipeline: NSObject, AVCaptureVideoDataOutputSampleBuff
             arrivalHostTime: arrivalHostTime
         )
 
+        nextFrameID &+= 1
         let carrier = SampleCarrier(
             buffer: sampleBuffer,
             hostPresentationTime: hostTime,
-            isEstimatedTime: isEstimated
+            isEstimatedTime: isEstimated,
+            frameID: nextFrameID
         )
 
         mailbox.postFrame(carrier)
