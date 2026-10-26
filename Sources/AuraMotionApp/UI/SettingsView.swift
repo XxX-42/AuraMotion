@@ -1,125 +1,54 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 import AuraMotionCore
 
 public struct SettingsView: View {
+    @ObservedObject private var localization = AppLocalization.shared
     @State private var settings = AppEnvironment.shared.currentSettings
     @State private var permissions = AppEnvironment.shared.permissionsManager.checkPermissions()
-    @State private var postEventRequestMessage: String?
+    @State private var postEventRequestMessageKey: String?
+    @State private var postEventRequestPane: String?
     @State private var postEventRequestSucceeded = false
     @State private var isRequestingPostEventAccess = false
 
     public init() {}
 
     public var body: some View {
-        Form {
-            Section(header: Text("Permissions Status")) {
-                HStack {
-                    Text("Camera Access:")
-                    Spacer()
-                    Text(permissions.isCameraAuthorized ? "Granted" : "Denied")
-                        .foregroundColor(permissions.isCameraAuthorized ? .green : .red)
-                    if !permissions.isCameraAuthorized {
-                        Button("Open Settings") {
-                            AppEnvironment.shared.permissionsManager.openSystemSettingsCamera()
+        let _ = localization.language
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 12) {
+                GroupBox(label: Text(L10n.tr("Language"))) {
+                    Picker(L10n.tr("Language"), selection: $settings.language) {
+                        ForEach(AppLanguage.allCases, id: \.self) { language in
+                            Text(language.displayName).tag(language)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                HStack {
-                    Text("Computer Control:")
-                    Spacer()
-                    Text(permissions.isAccessibilityTrusted ? "Granted" : "Denied")
-                        .foregroundColor(permissions.isAccessibilityTrusted ? .green : .red)
-                    if !permissions.isAccessibilityTrusted {
-                        Button("Request") {
-                            NSApplication.shared.activate(ignoringOtherApps: true)
-                            AppEnvironment.shared.permissionsManager.requestAccessibilityIfNeeded()
-                            AppEnvironment.shared.permissionsManager.openSystemSettingsAccessibility()
-                        }
-                    }
-                }
-                HStack {
-                    Text("Input Event Posting:")
-                    Spacer()
-                    Text(permissions.isPostEventAuthorized ? "Granted" : "Required")
-                        .foregroundColor(permissions.isPostEventAuthorized ? .green : .orange)
-                    if !permissions.isPostEventAuthorized {
-                        Button(isRequestingPostEventAccess ? "Requesting…" : "Request") {
-                            requestPostEventAccess()
-                        }
-                        .disabled(isRequestingPostEventAccess)
-                    }
-                }
-                if let postEventRequestMessage {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(postEventRequestMessage)
-                            .font(.caption)
-                            .foregroundColor(postEventRequestSucceeded ? .green : .orange)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if !postEventRequestSucceeded {
-                            Button("Open Control Settings") {
-                                AppEnvironment.shared.permissionsManager.openSystemSettingsAccessibility()
-                            }
-                        }
-                    }
-                }
-                HStack {
-                    Text("Input Monitoring (optional):")
-                    Spacer()
-                    Text(permissions.isListenEventAuthorized ? "Granted" : "Not granted")
-                        .foregroundColor(permissions.isListenEventAuthorized ? .green : .secondary)
-                    if !permissions.isListenEventAuthorized {
-                        Button("Request") {
-                            AppEnvironment.shared.permissionsManager.requestListenEventAccess()
-                            refreshPermissions()
-                        }
-                    }
-                }
-            }
 
-            Section(header: Text("Interaction Preferences")) {
-                Toggle("Mirror Camera Feed", isOn: $settings.isCameraMirrored)
-                Toggle("Enable Engagement Clutch (Ready Pose)", isOn: $settings.isClutchEnabled)
-                if settings.isClutchEnabled {
-                    HStack {
-                        Text("Activation Delay:")
-                        Slider(value: $settings.clutchDwellTime, in: 0...0.30, step: 0.01)
-                        Text(String(format: "%.0f ms", settings.clutchDwellTime * 1000))
-                            .monospacedDigit()
-                    }
-                }
-                Toggle("Enable Scroll Inertia", isOn: $settings.scrollInertiaEnabled)
-                Toggle("Enable Palm Swipe Switching", isOn: $settings.isPalmSwipeEnabled)
-                if settings.isPalmSwipeEnabled {
-                    Picker("Swipe Action:", selection: $settings.swipeAction) {
-                        ForEach(SwipeActionType.allCases, id: \.self) { action in
-                            Text(action.displayName).tag(action)
-                        }
-                    }
-                }
-            }
+                permissionsSection
+                interactionSection
+                feedbackSection
+                safetySection
 
-            Section(header: Text("HUD & Feedback")) {
-                Toggle("Show Floating HUD", isOn: $settings.showHUD)
-                Toggle("Show Click Feedback Ripples", isOn: $settings.showClickFeedback)
+                CursorExperimentPanel(
+                    settings: cursorExperimentBinding,
+                    isCameraAuthorized: permissions.isCameraAuthorized
+                )
             }
-
-            Section(header: Text("Safety & Arbitration")) {
-                HStack {
-                    Text("Arbitration Cooldown:")
-                    Slider(value: $settings.arbitrationCooldownSeconds, in: 0.5...3.0, step: 0.25)
-                    Text(String(format: "%.1fs", settings.arbitrationCooldownSeconds))
-                        .monospacedDigit()
-                }
-            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(20)
         .frame(width: 500, height: 560)
         .onChange(of: settings) { _, newSettings in
             AppEnvironment.shared.updateSettings(newSettings)
         }
+        .onChange(of: settings.language) { _, newLanguage in
+            AppLocalization.shared.setLanguage(newLanguage)
+        }
         .onAppear {
             settings = AppEnvironment.shared.currentSettings
+            AppLocalization.shared.setLanguage(settings.language)
             refreshPermissions()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -130,12 +59,155 @@ public struct SettingsView: View {
                 permissions = state
                 if state.isPostEventAuthorized {
                     postEventRequestSucceeded = true
-                    postEventRequestMessage = "Input event posting is authorized."
+                    postEventRequestMessageKey = "Input event posting is authorized."
+                    postEventRequestPane = nil
                 }
             } else {
                 refreshPermissions()
             }
         }
+    }
+
+    private var cursorExperimentBinding: Binding<CursorExperimentSettings> {
+        Binding(
+            get: { settings.cursorExperiment },
+            set: { settings.cursorExperiment = $0 }
+        )
+    }
+
+    private var permissionsSection: some View {
+        GroupBox(label: Text(L10n.tr("Permissions Status"))) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(L10n.tr("Camera Access:"))
+                    Spacer()
+                    Text(L10n.tr(permissions.isCameraAuthorized ? "Granted" : "Denied"))
+                        .foregroundStyle(permissions.isCameraAuthorized ? .green : .red)
+                    if !permissions.isCameraAuthorized {
+                        Button(L10n.tr("Open Settings")) {
+                            AppEnvironment.shared.permissionsManager.openSystemSettingsCamera()
+                        }
+                    }
+                }
+
+                HStack {
+                    Text(L10n.tr("Computer Control:"))
+                    Spacer()
+                    Text(L10n.tr(permissions.isAccessibilityTrusted ? "Granted" : "Denied"))
+                        .foregroundStyle(permissions.isAccessibilityTrusted ? .green : .red)
+                    if !permissions.isAccessibilityTrusted {
+                        Button(L10n.tr("Request")) {
+                            NSApplication.shared.activate(ignoringOtherApps: true)
+                            AppEnvironment.shared.permissionsManager.requestAccessibilityIfNeeded()
+                            AppEnvironment.shared.permissionsManager.openSystemSettingsAccessibility()
+                        }
+                    }
+                }
+
+                HStack {
+                    Text(L10n.tr("Input Event Posting:"))
+                    Spacer()
+                    Text(L10n.tr(permissions.isPostEventAuthorized ? "Granted" : "Required"))
+                        .foregroundStyle(permissions.isPostEventAuthorized ? .green : .orange)
+                    if !permissions.isPostEventAuthorized {
+                        Button(L10n.tr(isRequestingPostEventAccess ? "Requesting…" : "Request")) {
+                            requestPostEventAccess()
+                        }
+                        .disabled(isRequestingPostEventAccess)
+                    }
+                }
+
+                if let postEventRequestMessageKey {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(localizedPostEventRequestMessage(postEventRequestMessageKey))
+                            .font(.caption)
+                            .foregroundStyle(postEventRequestSucceeded ? .green : .orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !postEventRequestSucceeded {
+                            Button(L10n.tr("Open Control Settings")) {
+                                AppEnvironment.shared.permissionsManager.openSystemSettingsAccessibility()
+                            }
+                        }
+                    }
+                }
+
+                HStack {
+                    Text(L10n.tr("Input Monitoring (optional):"))
+                    Spacer()
+                    Text(L10n.tr(permissions.isListenEventAuthorized ? "Granted" : "Not granted"))
+                        .foregroundStyle(permissions.isListenEventAuthorized ? Color.green : Color.gray)
+                    if !permissions.isListenEventAuthorized {
+                        Button(L10n.tr("Request")) {
+                            AppEnvironment.shared.permissionsManager.requestListenEventAccess()
+                            refreshPermissions()
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var interactionSection: some View {
+        GroupBox(label: Text(L10n.tr("Interaction Preferences"))) {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(L10n.tr("Mirror Camera Feed"), isOn: $settings.isCameraMirrored)
+                Toggle(L10n.tr("Enable Engagement Clutch (Ready Pose)"), isOn: $settings.isClutchEnabled)
+                if settings.isClutchEnabled {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(L10n.tr("Activation Delay:"))
+                            Spacer()
+                            Text(String(format: L10n.tr("%.0f ms"), settings.clutchDwellTime * 1000))
+                                .monospacedDigit()
+                        }
+                        Slider(value: $settings.clutchDwellTime, in: 0...0.30, step: 0.01)
+                    }
+                }
+                Toggle(L10n.tr("Enable Scroll Inertia"), isOn: $settings.scrollInertiaEnabled)
+                Toggle(L10n.tr("Enable Palm Swipe Switching"), isOn: $settings.isPalmSwipeEnabled)
+                if settings.isPalmSwipeEnabled {
+                    Picker(L10n.tr("Swipe Action:"), selection: $settings.swipeAction) {
+                        ForEach(SwipeActionType.allCases, id: \.self) { action in
+                            Text(action.localizedDisplayName).tag(action)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var feedbackSection: some View {
+        GroupBox(label: Text(L10n.tr("HUD & Feedback"))) {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(L10n.tr("Show Floating HUD"), isOn: $settings.showHUD)
+                Toggle(L10n.tr("Show Click Feedback Ripples"), isOn: $settings.showClickFeedback)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var safetySection: some View {
+        GroupBox(label: Text(L10n.tr("Safety & Arbitration"))) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(L10n.tr("Arbitration Cooldown:"))
+                    Spacer()
+                    Text(String(format: L10n.tr("%.1f s"), settings.arbitrationCooldownSeconds))
+                        .monospacedDigit()
+                }
+                Slider(value: $settings.arbitrationCooldownSeconds, in: 0.5...3.0, step: 0.25)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func localizedPostEventRequestMessage(_ key: String) -> String {
+        if let postEventRequestPane {
+            return L10n.tr(key, replacing: ["{pane}": postEventRequestPane])
+        }
+        return L10n.tr(key)
     }
 
     private func refreshPermissions() {
@@ -148,7 +220,8 @@ public struct SettingsView: View {
         NSApplication.shared.activate(ignoringOtherApps: true)
         isRequestingPostEventAccess = true
         postEventRequestSucceeded = false
-        postEventRequestMessage = "Requesting input event access from macOS…"
+        postEventRequestMessageKey = "Requesting input event access from macOS…"
+        postEventRequestPane = nil
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             let requestGranted = AppEnvironment.shared.permissionsManager.requestPostEventAccess()
@@ -158,12 +231,14 @@ public struct SettingsView: View {
             postEventRequestSucceeded = updatedPermissions.isPostEventAuthorized
 
             if updatedPermissions.isPostEventAuthorized {
-                postEventRequestMessage = "Input event posting is authorized."
+                postEventRequestMessageKey = "Input event posting is authorized."
+                postEventRequestPane = nil
             } else if requestGranted {
-                postEventRequestMessage = "macOS returned from the request, but event posting is not active yet. Approve any system alert, then wait for the status to refresh."
+                postEventRequestMessageKey = "macOS returned from the request, but event posting is not active yet. Approve any system alert, then wait for the status to refresh."
+                postEventRequestPane = nil
             } else {
-                let pane = AppEnvironment.shared.permissionsManager.controlPermissionSettingsName
-                postEventRequestMessage = "macOS has not granted computer input control. Enable AuraMotion in Privacy & Security → \(pane). If its switch is already on after an app update, turn it off and on, then quit and reopen AuraMotion."
+                postEventRequestPane = AppEnvironment.shared.permissionsManager.controlPermissionSettingsName
+                postEventRequestMessageKey = "macOS has not granted computer input control. Enable AuraMotion in Privacy & Security → {pane}. If its switch is already on after an app update, turn it off and on, then quit and reopen AuraMotion."
                 AppEnvironment.shared.permissionsManager.openSystemSettingsAccessibility()
             }
         }

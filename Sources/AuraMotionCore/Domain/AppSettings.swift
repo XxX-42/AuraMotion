@@ -27,6 +27,8 @@ public struct AppSettings: Sendable, Codable, Equatable {
     public var arbitrationCooldownSeconds: TimeInterval
     public var isPalmSwipeEnabled: Bool
     public var swipeAction: SwipeActionType
+    public var cursorExperiment: CursorExperimentSettings
+    public var language: AppLanguage
 
     public init(
         isCameraMirrored: Bool = true,
@@ -39,7 +41,9 @@ public struct AppSettings: Sendable, Codable, Equatable {
         scrollInertiaEnabled: Bool = true,
         arbitrationCooldownSeconds: TimeInterval = 1.5,
         isPalmSwipeEnabled: Bool = true,
-        swipeAction: SwipeActionType = .switchApp
+        swipeAction: SwipeActionType = .switchApp,
+        cursorExperiment: CursorExperimentSettings = .init(),
+        language: AppLanguage = .simplifiedChinese
     ) {
         self.isCameraMirrored = isCameraMirrored
         self.isClutchEnabled = isClutchEnabled
@@ -52,5 +56,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.arbitrationCooldownSeconds = arbitrationCooldownSeconds
         self.isPalmSwipeEnabled = isPalmSwipeEnabled
         self.swipeAction = swipeAction
+        self.cursorExperiment = cursorExperiment
+        self.language = language
     }
 }
