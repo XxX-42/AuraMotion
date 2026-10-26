@@ -24,7 +24,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
 
         // Post-event access is required for cursor and keyboard output. Keep
         // the request controls visible when macOS has not granted that access.
-        if !AppEnvironment.shared.permissionsManager.checkPermissions().isPostEventAuthorized {
+        if CommandLine.arguments.contains("--cursor-experiments") ||
+            !AppEnvironment.shared.permissionsManager.checkPermissions().isPostEventAuthorized {
             self.statusItemController?.showSettingsWindow()
         }
 
