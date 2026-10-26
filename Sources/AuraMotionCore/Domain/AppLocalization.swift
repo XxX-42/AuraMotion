@@ -159,6 +159,7 @@ public enum L10n {
         "Waiting for a tracked pointer…": "等待有效指针跟踪…",
         "Waiting for a tracked pointer… {seconds}": "等待有效指针跟踪… 剩余 {seconds} 秒",
         "HUD Display Mode": "悬浮面板显示模式",
+        "Gesture Click & Menu": "手势点击与菜单",
         "Preview Mirror": "镜像",
         "Camera Preview": "摄像头画面",
         "First Ring": "一环",

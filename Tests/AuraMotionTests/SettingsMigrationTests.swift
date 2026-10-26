@@ -30,10 +30,23 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertTrue(settings.hudPreviewMirrored)
         XCTAssertFalse(settings.hudShowsJointNumbers)
         XCTAssertFalse(settings.hudHighlightFirstRing)
+        XCTAssertFalse(settings.isGestureClickAndMenuEnabled)
         XCTAssertEqual(settings.hudSkeletonScale, 1)
         XCTAssertEqual(settings.clutchDwellTime, 0.12)
         XCTAssertTrue(settings.isPalmSwipeEnabled)
         XCTAssertEqual(settings.swipeAction, .switchApp)
+    }
+
+    func testGestureClickAndMenuDefaultsOffAndPersists() throws {
+        let name = "AuraMotion.GestureToggleTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let repository = SettingsRepository(userDefaults: defaults)
+        var settings = repository.loadSettings()
+        XCTAssertFalse(settings.isGestureClickAndMenuEnabled)
+        settings.isGestureClickAndMenuEnabled = true
+        repository.saveSettings(settings)
+        XCTAssertTrue(repository.loadSettings().isGestureClickAndMenuEnabled)
     }
 
     func testHUDCameraModeSurvivesReload() throws {

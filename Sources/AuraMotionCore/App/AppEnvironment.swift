@@ -23,6 +23,7 @@ public struct HUDSnapshot: Sendable {
     public var isVideoDataMirrored = false
     public var hudShowsJointNumbers = false
     public var hudHighlightFirstRing = false
+    public var isGestureClickAndMenuEnabled = false
     public var hudSkeletonScale = 1.0
     public var clickFeedbackID: UInt64 = 0
     public var clickFeedbackLocation: CGPoint? = nil
@@ -46,6 +47,9 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     // Dedicated serial queue for all interaction state and FSM transitions
     public let interactionQueue = DispatchQueue(label: "com.auramotion.interaction", qos: .userInteractive)
     private let safetyQueue = DispatchQueue(label: "com.auramotion.safety", qos: .userInteractive)
+    private let gestureActionsLock = NSLock()
+    private var gestureActionsAllowed = false
+    private var gestureActionsGeneration: UInt64 = 0
     private let visionConfigurationLock = NSLock()
     private var visionConfigurationGeneration: UInt64 = 0
     private var visionReconfigurationPending = false
@@ -154,6 +158,8 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         self.stateMachine.clutchDwellDuration = settings.clutchDwellTime
         self.stateMachine.scrollDetector.scrollController.isInertiaEnabled = settings.scrollInertiaEnabled
         self.stateMachine.isPalmSwipeEnabled = settings.isPalmSwipeEnabled
+        self.setGestureActionGate(settings.isGestureClickAndMenuEnabled)
+        self.stateMachine.isGestureClickAndMenuEnabled = settings.isGestureClickAndMenuEnabled
         self.stateMachine.updateCalibration(cal)
 
         if settings.cursorExperiment.visionROIEnabled || settings.cursorExperiment.mediaPipeBenchmarkEnabled {
@@ -488,6 +494,8 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
             self.stateMachine.clutchDwellDuration = updatedSettings.clutchDwellTime
             self.stateMachine.scrollDetector.scrollController.isInertiaEnabled = updatedSettings.scrollInertiaEnabled
             self.stateMachine.isPalmSwipeEnabled = updatedSettings.isPalmSwipeEnabled
+            self.setGestureActionGate(updatedSettings.isGestureClickAndMenuEnabled)
+            self.stateMachine.isGestureClickAndMenuEnabled = updatedSettings.isGestureClickAndMenuEnabled
             AppLocalization.shared.setLanguage(updatedSettings.language)
             self.settingsRepository.saveSettings(updatedSettings)
             if let visionGeneration {
@@ -498,6 +506,38 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
                 )
             }
             self.publishHUDSnapshot()
+        }
+    }
+
+    private func setGestureActionGate(_ enabled: Bool) {
+        gestureActionsLock.lock()
+        if gestureActionsAllowed != enabled { gestureActionsGeneration &+= 1 }
+        gestureActionsAllowed = enabled
+        gestureActionsLock.unlock()
+    }
+
+    private func gestureActionGate() -> @Sendable () -> Bool {
+        gestureActionsLock.lock()
+        let generation = gestureActionsGeneration
+        gestureActionsLock.unlock()
+        return { [weak self] in
+            guard let self else { return false }
+            self.gestureActionsLock.lock()
+            defer { self.gestureActionsLock.unlock() }
+            return self.gestureActionsAllowed && self.gestureActionsGeneration == generation
+        }
+    }
+
+    /// Atomically toggles the gesture menu and pinch click/drag preference.
+    public func toggleGestureClickAndMenu() {
+        interactionQueue.async { [weak self] in
+            guard let self else { return }
+            let enabled = !self.currentSettings.isGestureClickAndMenuEnabled
+            self.currentSettings.isGestureClickAndMenuEnabled = enabled
+            self.setGestureActionGate(enabled)
+            self.stateMachine.isGestureClickAndMenuEnabled = enabled
+            self.settingsRepository.saveSettings(self.currentSettings)
+            self.publishHUDSnapshot(force: true)
         }
     }
 
@@ -733,11 +773,11 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         clickFeedbackID &+= 1
         clickFeedbackLocation = currentSettings.showClickFeedback ? anchor : nil
         recognize("Click recognized")
-        outputCoordinator.enqueueClick(at: anchor, epoch: epoch)
+        outputCoordinator.enqueueClick(at: anchor, epoch: epoch, gate: gestureActionGate())
     }
 
     public func stateMachine(_ fsm: GestureStateMachine, emitDragStartAt anchor: CGPoint, epoch: UInt64) {
-        outputCoordinator.enqueueDragStart(at: anchor, epoch: epoch)
+        outputCoordinator.enqueueDragStart(at: anchor, epoch: epoch, gate: gestureActionGate())
     }
 
     public func stateMachine(_ fsm: GestureStateMachine, emitDragMoveTo location: CGPoint, epoch: UInt64) {
@@ -765,8 +805,9 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
 
     public func stateMachine(_ fsm: GestureStateMachine, emitCommand command: GestureCommand, at target: CGPoint, epoch: UInt64) {
         recognize("\(command.title) recognized")
+        let actionGate = gestureActionGate()
         guard command == .snapLeft || command == .snapRight else {
-            outputCoordinator.enqueueCommand(command, at: target, epoch: epoch)
+            outputCoordinator.enqueueCommand(command, at: target, epoch: epoch, gate: actionGate)
             return
         }
         DispatchQueue.main.async { [weak self] in
@@ -778,7 +819,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
             guard let screen = NSScreen.screens.first(where: { $0.frame.contains(cocoaPoint) }) ?? NSScreen.main else { return }
             let visible = screen.visibleFrame
             let bounds = CGRect(x: visible.minX, y: primaryHeight - visible.maxY, width: visible.width, height: visible.height)
-            self.outputCoordinator.enqueueValidatedAction(epoch: epoch) { [weak self] in
+            self.outputCoordinator.enqueueValidatedAction(epoch: epoch, gate: actionGate) { [weak self] in
                 let result = WindowSnapper.apply(pid: pid, bounds: bounds, right: command == .snapRight)
                 self?.interactionQueue.async { [weak self] in self?.recognize(result) }
             }
@@ -877,7 +918,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
             snapshot.feedback = "Hold steady, then separate fingertips"
         } else if stateMachine.commandMenu.isOpen {
             snapshot.feedback = "Point to a command, then pinch"
-        } else if stateMachine.currentState == .palmRest {
+        } else if stateMachine.currentState == .palmRest && currentSettings.isGestureClickAndMenuEnabled {
             snapshot.feedback = "Hold palm still to open commands"
         }
         snapshot.commandMenu = stateMachine.commandMenu.snapshot
@@ -889,6 +930,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         snapshot.isVideoDataMirrored = capturePipeline.isVideoDataMirrored
         snapshot.hudShowsJointNumbers = currentSettings.hudShowsJointNumbers
         snapshot.hudHighlightFirstRing = currentSettings.hudHighlightFirstRing
+        snapshot.isGestureClickAndMenuEnabled = currentSettings.isGestureClickAndMenuEnabled
         snapshot.hudSkeletonScale = currentSettings.hudSkeletonScale
         snapshot.rawCursorLocation = latestRawCursorLocation
         snapshot.cursorExperimentStatus = cursorController.cursorExperimentStatus

@@ -24,19 +24,19 @@ public final class EventOutputCoordinator: @unchecked Sendable {
         self.synthesizer = synthesizer
     }
 
-    public func enqueueCommand(_ command: GestureCommand, at target: CGPoint, epoch: UInt64) {
-        enqueueValidatedAction(epoch: epoch) { [weak self] in
+    public func enqueueCommand(_ command: GestureCommand, at target: CGPoint, epoch: UInt64, gate: (@Sendable () -> Bool)? = nil) {
+        enqueueValidatedAction(epoch: epoch, gate: gate) { [weak self] in
             self?.synthesizer.postCommand(command, at: target)
         }
     }
 
-    public func enqueueValidatedAction(epoch: UInt64, action: @escaping @Sendable () -> Void) {
+    public func enqueueValidatedAction(epoch: UInt64, gate: (@Sendable () -> Bool)? = nil, action: @escaping @Sendable () -> Void) {
         outputQueue.async { [weak self] in
             guard let self else { return }
             os_unfair_lock_lock(&self.lock)
             let emergency = self.isEmergencyActive
             os_unfair_lock_unlock(&self.lock)
-            guard !emergency, self.canPost(epoch: epoch), !self.guardian.isLeftMouseDown else { return }
+            guard !emergency, self.canPost(epoch: epoch), gate?() != false, !self.guardian.isLeftMouseDown else { return }
             action()
         }
     }
@@ -61,27 +61,27 @@ public final class EventOutputCoordinator: @unchecked Sendable {
     }
 
     /// Enqueues an anchor-locked click.
-    public func enqueueClick(at anchor: CGPoint, epoch: UInt64) {
+    public func enqueueClick(at anchor: CGPoint, epoch: UInt64, gate: (@Sendable () -> Bool)? = nil) {
         outputQueue.async { [weak self] in
             guard let self = self else { return }
             os_unfair_lock_lock(&self.lock)
             let emergency = self.isEmergencyActive
             os_unfair_lock_unlock(&self.lock)
 
-            guard !emergency, self.canPost(epoch: epoch) else { return }
+            guard !emergency, self.canPost(epoch: epoch), gate?() != false else { return }
             self.synthesizer.postClick(at: anchor)
         }
     }
 
     /// Enqueues drag start (mouse down).
-    public func enqueueDragStart(at anchor: CGPoint, epoch: UInt64) {
+    public func enqueueDragStart(at anchor: CGPoint, epoch: UInt64, gate: (@Sendable () -> Bool)? = nil) {
         outputQueue.async { [weak self] in
             guard let self = self else { return }
             os_unfair_lock_lock(&self.lock)
             let emergency = self.isEmergencyActive
             os_unfair_lock_unlock(&self.lock)
 
-            guard !emergency, self.canPost(epoch: epoch) else { return }
+            guard !emergency, self.canPost(epoch: epoch), gate?() != false else { return }
             self.guardian.markLeftMouseDown(at: anchor)
             self.synthesizer.postMouseDown(at: anchor)
         }

@@ -26,6 +26,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
     public var hudShowsJointNumbers: Bool
     public var hudHighlightFirstRing: Bool
     public var hudSkeletonScale: Double
+    public var isGestureClickAndMenuEnabled: Bool
     public var showClickFeedback: Bool
     public var hudSkeletonFPS: Int
     public var scrollInertiaEnabled: Bool
@@ -46,6 +47,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         hudShowsJointNumbers: Bool = false,
         hudHighlightFirstRing: Bool = false,
         hudSkeletonScale: Double = 1,
+        isGestureClickAndMenuEnabled: Bool = false,
         showClickFeedback: Bool = true,
         hudSkeletonFPS: Int = 30,
         scrollInertiaEnabled: Bool = true,
@@ -65,6 +67,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.hudShowsJointNumbers = hudShowsJointNumbers
         self.hudHighlightFirstRing = hudHighlightFirstRing
         self.hudSkeletonScale = hudSkeletonScale
+        self.isGestureClickAndMenuEnabled = isGestureClickAndMenuEnabled
         self.showClickFeedback = showClickFeedback
         self.hudSkeletonFPS = hudSkeletonFPS
         self.scrollInertiaEnabled = scrollInertiaEnabled

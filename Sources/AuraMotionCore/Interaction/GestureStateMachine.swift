@@ -54,6 +54,19 @@ public final class GestureStateMachine: @unchecked Sendable {
     }
     public var isManualPaused: Bool = false
     public var isPalmSwipeEnabled: Bool = true
+    /// The application sets this from preferences. A transition always cancels
+    /// queued interaction and requires fingers to separate before re-enabling.
+    public var isGestureClickAndMenuEnabled: Bool = true {
+        didSet {
+            guard oldValue != isGestureClickAndMenuEnabled else { return }
+            commandMenu.cancel()
+            pinchDetector.reset()
+            requiresPinchRelease = isGestureClickAndMenuEnabled
+            if currentState == .dragging || currentState == .pinchArmed { transition(to: .idle) }
+            delegate?.stateMachineTriggerEmergencyRelease(self)
+        }
+    }
+    private var requiresPinchRelease = false
     public var openPalmGraceDuration: TimeInterval = 0.12
 
     private var lastOpenPalmTimestamp: TimeInterval = 0
@@ -149,8 +162,12 @@ public final class GestureStateMachine: @unchecked Sendable {
         }
         let features = PoseClassifier.classify(sample: sample, pinchReleaseThreshold: pinchDetector.releaseThreshold)
 
-        if commandMenu.consumeClosingContact(distance: features.normalizedPinchDistance, releaseThreshold: pinchDetector.releaseThreshold) { return }
-        if let menu = commandMenu.snapshot {
+        if requiresPinchRelease, let distance = features.normalizedPinchDistance,
+           distance >= pinchDetector.releaseThreshold { requiresPinchRelease = false }
+        let clickAndMenuActive = isGestureClickAndMenuEnabled && !requiresPinchRelease
+        if !clickAndMenuActive { commandMenu.cancel() }
+        if clickAndMenuActive && commandMenu.consumeClosingContact(distance: features.normalizedPinchDistance, releaseThreshold: pinchDetector.releaseThreshold) { return }
+        if clickAndMenuActive, let menu = commandMenu.snapshot {
             // A deliberate transition from the open palm into an index-pointing
             // pose keeps the menu open for navigation. If tracking still sees a
             // hand but no actionable finger pose (fist, lowered hand, or a folded
@@ -233,7 +250,7 @@ public final class GestureStateMachine: @unchecked Sendable {
                     transition(to: .palmCandidate)
                     return
                 } else {
-                    if commandMenu.observePalm(position: PalmSwipeDetector.extractPalmCenter(from: sample), timestamp: timestamp,
+                    if clickAndMenuActive && commandMenu.observePalm(position: PalmSwipeDetector.extractPalmCenter(from: sample), timestamp: timestamp,
                                                target: lastPointerTarget ?? cursorLoc) {
                         pinchDetector.reset(); scrollDetector.reset(); shortcutDetector.reset()
                         transition(to: .idle)
@@ -257,7 +274,7 @@ public final class GestureStateMachine: @unchecked Sendable {
         // ── 6. Pinch Detection (BEFORE clutch — pinch must never be blocked) ──
         //    When actively pinching or in drag, always evaluate pinch regardless of clutch.
         let isPinchActive = (currentState == .pinchArmed || currentState == .dragging)
-        if isPinchActive || features.isPinchApproach {
+        if clickAndMenuActive && (isPinchActive || features.isPinchApproach) {
             let pinchDecision = pinchDetector.evaluate(
                 normalizedDistance: features.normalizedPinchDistance,
                 currentLocation: cursorLoc,
@@ -358,7 +375,7 @@ public final class GestureStateMachine: @unchecked Sendable {
 
         // ── 10. Default: Pointer ──
         // If pinch detector has no active state, evaluate it passively to track pre-pinch approach
-        if !isPinchActive {
+        if clickAndMenuActive && !isPinchActive {
             let pinchDecision = pinchDetector.evaluate(
                 normalizedDistance: features.normalizedPinchDistance,
                 currentLocation: cursorLoc,

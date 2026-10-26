@@ -67,6 +67,9 @@ public struct SettingsView: View {
             if settings.hudShowsJointNumbers != snapshot.hudShowsJointNumbers {
                 settings.hudShowsJointNumbers = snapshot.hudShowsJointNumbers
             }
+            if settings.isGestureClickAndMenuEnabled != snapshot.isGestureClickAndMenuEnabled {
+                settings.isGestureClickAndMenuEnabled = snapshot.isGestureClickAndMenuEnabled
+            }
             if settings.hudHighlightFirstRing != snapshot.hudHighlightFirstRing {
                 settings.hudHighlightFirstRing = snapshot.hudHighlightFirstRing
             }

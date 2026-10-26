@@ -51,6 +51,45 @@ final class MockStateMachineDelegate: GestureStateMachineDelegate, @unchecked Se
 }
 
 final class GestureStateMachineTests: XCTestCase {
+    func testDisabledGestureClickAndReenableRequiresFingerRelease() {
+        let fsm = GestureStateMachine()
+        let output = MockStateMachineDelegate()
+        fsm.delegate = output
+        fsm.isClutchEnabled = false
+        fsm.confidenceGate.reacquisitionDwellSeconds = 0
+        fsm.isGestureClickAndMenuEnabled = false
+        for frame in 0..<10 {
+            fsm.processFrame(sample: makeSample(pinchDist: 0.1, time: 100 + Double(frame) / 30), mappedCursorLocation: .zero, currentEpoch: 1, isInjectionAllowed: true)
+        }
+        XCTAssertTrue(output.clickAnchors.isEmpty)
+        XCTAssertTrue(output.dragStarts.isEmpty)
+        fsm.isGestureClickAndMenuEnabled = true
+        for frame in 0..<10 {
+            fsm.processFrame(sample: makeSample(pinchDist: 0.1, time: 101 + Double(frame) / 30), mappedCursorLocation: .zero, currentEpoch: 1, isInjectionAllowed: true)
+        }
+        XCTAssertTrue(output.clickAnchors.isEmpty)
+        fsm.processFrame(sample: makeSample(pinchDist: 0.8, time: 102), mappedCursorLocation: .zero, currentEpoch: 1, isInjectionAllowed: true)
+        for frame in 0..<10 {
+            fsm.processFrame(sample: makeSample(pinchDist: 0.1, time: 102.1 + Double(frame) / 30), mappedCursorLocation: .zero, currentEpoch: 1, isInjectionAllowed: true)
+        }
+        XCTAssertEqual(output.clickAnchors.count, 1)
+    }
+
+    func testTurningOffCancelsOpenMenuAndReleasesDrag() {
+        let fsm = GestureStateMachine()
+        let output = MockStateMachineDelegate()
+        fsm.delegate = output
+        for frame in 0..<60 {
+            if fsm.commandMenu.observePalm(position: CGPoint(x: 0.5, y: 0.5), timestamp: 10 + Double(frame) / 30, target: .zero) { break }
+        }
+        XCTAssertTrue(fsm.commandMenu.isOpen)
+        fsm.transition(to: .dragging)
+        fsm.isGestureClickAndMenuEnabled = false
+        XCTAssertFalse(fsm.commandMenu.isOpen)
+        XCTAssertEqual(fsm.currentState, .idle)
+        XCTAssertEqual(output.emergencyReleaseCount, 1)
+    }
+
     func testContactClicksBeforeReleaseAndNeverRepeatsWhileHeld() {
         let fsm = GestureStateMachine()
         let output = MockStateMachineDelegate()

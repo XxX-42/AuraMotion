@@ -21,6 +21,17 @@ final class PalmSwipeDetectorTests: XCTestCase {
         XCTAssertFalse(fsm.commandMenu.isOpen)
     }
 
+    func testDisabledGestureActionsDoNotOpenMenu() {
+        let fsm = GestureStateMachine()
+        fsm.isGestureClickAndMenuEnabled = false
+        fsm.isPalmSwipeEnabled = false
+        fsm.confidenceGate.reacquisitionDwellSeconds = 0
+        for frame in 0..<90 {
+            fsm.processFrame(sample: makeOpenPalmSample(x: 0.5, y: 0.5, time: 100 + Double(frame) / 30), mappedCursorLocation: .zero, currentEpoch: 1, isInjectionAllowed: true)
+        }
+        XCTAssertFalse(fsm.commandMenu.isOpen)
+    }
+
     private func makeOpenPalmSample(x: CGFloat, y: CGFloat, time: TimeInterval, confidence: Float = 0.9) -> HandSample {
         let joints: [HandJointName: HandJoint] = [
             .wrist: HandJoint(name: .wrist, position: CGPoint(x: x, y: y - 0.15), confidence: confidence),

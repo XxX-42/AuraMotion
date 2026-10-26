@@ -2,7 +2,34 @@ import XCTest
 import CoreGraphics
 @testable import AuraMotionCore
 
+private final class GestureGateFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var enabled = true
+    func disable() { lock.lock(); enabled = false; lock.unlock() }
+    func isEnabled() -> Bool { lock.lock(); defer { lock.unlock() }; return enabled }
+}
+
 final class CommandMenuTests: XCTestCase {
+    func testDisabledGateDropsAlreadyQueuedClickAndCommand() {
+        let poster = RecordingEventPoster()
+        let coordinator = EventOutputCoordinator(synthesizer: poster)
+        coordinator.epochProvider = { 1 }
+        coordinator.injectionAllowedProvider = { true }
+        let blocker = DispatchSemaphore(value: 0)
+        let entered = expectation(description: "output queue is blocked")
+        let done = expectation(description: "output queue drained")
+        let flag = GestureGateFlag()
+        coordinator.enqueueValidatedAction(epoch: 1) { entered.fulfill(); _ = blocker.wait(timeout: .now() + 2) }
+        wait(for: [entered], timeout: 1)
+        coordinator.enqueueClick(at: .zero, epoch: 1, gate: { flag.isEnabled() })
+        coordinator.enqueueCommand(.rightClick, at: .zero, epoch: 1, gate: { flag.isEnabled() })
+        flag.disable()
+        blocker.signal()
+        coordinator.enqueueValidatedAction(epoch: 1) { done.fulfill() }
+        wait(for: [done], timeout: 1)
+        XCTAssertTrue(poster.allEvents.isEmpty)
+    }
+
     func testBoundaryTremorDoesNotChangeSelectedTile() {
         let menu = GestureCommandMenu()
         open(menu)

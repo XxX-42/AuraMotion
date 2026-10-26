@@ -125,6 +125,19 @@ public struct HUDView: View {
             }.padding(.horizontal, 6)
             #endif
 
+            HStack {
+                Button { AppEnvironment.shared.toggleGestureClickAndMenu() } label: {
+                    Text(L10n.tr("Gesture Click & Menu"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .foregroundColor(snapshot?.isGestureClickAndMenuEnabled == true ? .cyan : .white.opacity(0.65))
+                        .background(Color.white.opacity(snapshot?.isGestureClickAndMenuEnabled == true ? 0.16 : 0.07), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(snapshot?.isGestureClickAndMenuEnabled == true ? L10n.tr("On") : L10n.tr("Off"))
+                Spacer()
+            }.padding(.horizontal, 10)
+
             if !isCompact {
                 HStack(alignment: .top, spacing: 4) {
                     Text(effectiveCursorStrategyLabel)
