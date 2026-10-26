@@ -236,6 +236,12 @@ public struct HUDView: View {
                     if showMediaPipe {
                         FaceLandmarksView(points: faceSample?.landmarks ?? [], flipHorizontally: faceOverlayMirrored)
                             .allowsHitTesting(false)
+                        if cameraPreviewEnabled, let face = faceSample, let pose = face.headPose,
+                           gazeController.lastFace?.frameID == face.frameID {
+                            HeadCenteredRegionOverlay(center: CGPoint(x: faceOverlayMirrored ? 1 - CGFloat(pose.centerX) : CGFloat(pose.centerX), y: CGFloat(pose.centerY)),
+                                                      focused: gazeController.spatial.focused, candidate: gazeController.spatial.candidate)
+                                .allowsHitTesting(false)
+                        }
                     }
                     #endif
                     if let sample = snapshot?.sample, handOverlayEnabled {
@@ -261,6 +267,15 @@ public struct HUDView: View {
                 .layoutPriority(1)
 
                 #if DEBUG
+                if cameraPreviewEnabled && showMediaPipe {
+                    Text(spatialDiagnosticsLabel)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                }
                 if gazeController.calibration != nil {
                     Text(gazeFixationLabel)
                         .font(.system(size: 10)).foregroundColor(.yellow.opacity(0.85))
@@ -329,7 +344,7 @@ public struct HUDView: View {
             faceFPS = note.userInfo?["fps"] as? Double
             faceLastUpdate = faceStatus == "Active" || faceStatus == "No face" ? Date() : nil
         }
-        .onReceive(Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()) { now in
+        .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { now in
             fpsClock = now
             GazeDebugController.shared.clearIfStale()
         }
@@ -363,6 +378,29 @@ public struct HUDView: View {
     }
 
     #if DEBUG
+    private func regionLabel(_ region: FocusedRegion?) -> String {
+        guard let region else { return "—" }
+        switch region.radial {
+        case .center: return "CENTER"
+        case .outside: return "—"
+        case .ring1, .ring2:
+            let labels: [AngularSector: String] = [.north: "N", .northEast: "NE", .east: "E", .southEast: "SE", .south: "S", .southWest: "SW", .west: "W", .northWest: "NW"]
+            return "\(region.radial == .ring1 ? "R1" : "R2") · \(region.sector.flatMap { labels[$0] } ?? "—")"
+        }
+    }
+    private var spatialDiagnosticsLabel: String {
+        let head: String
+        if let pose = gazeController.lastFace?.headPose {
+            head = String(format: "Head: %.2f, %.2f  yaw %+.1f° pitch %+.1f° roll %+.1f°", pose.centerX, pose.centerY, pose.yaw * 180 / .pi, pose.pitch * 180 / .pi, pose.roll * 180 / .pi)
+        } else { head = "Head: —" }
+        let delta: String
+        if let face = gazeController.lastFace, let gaze = gazeController.estimate { delta = String(format: "%.1f ms", abs(face.timestamp - gaze.timestamp) * 1000) } else { delta = "—" }
+        let stats = gazeController.spatial.diagnostics
+        let p50 = stats.ageP50Ms.map { String(format: "%.0f", $0) } ?? "—"
+        let p95 = stats.ageP95Ms.map { String(format: "%.0f", $0) } ?? "—"
+        let latency = stats.resolveLatencyMs.map { String(format: "%.2f", $0) } ?? "—"
+        return "\(head)\n\(gazeFixationLabel)  Region: \(regionLabel(gazeController.spatial.focused))  候选: \(regionLabel(gazeController.spatial.candidate))  Face/Gaze Δ: \(delta)\nGaze: \(String(format: "%.0f", stats.gazeAvailablePercent))%  切换: \(stats.switchCount)  采集→区域 P50/P95: \(p50)/\(p95) ms  计算: \(latency) ms"
+    }
     private var gazeFixationLabel: String {
         switch gazeController.fixation {
         case .unavailable: return "注视：不可用"

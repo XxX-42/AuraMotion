@@ -11,6 +11,7 @@ final class GazeDebugController: ObservableObject {
     @Published var calibration: GazeCalibration?
     @Published var estimate: GazeEstimate?
     @Published var fixation: FixationState = .unavailable
+    @Published private(set) var spatial = HeadCenteredTargeting()
     @Published var status = "请先进行九点校准"
     private var detector = FixationDetector()
     private var calibratedMirroring: Bool?
@@ -24,18 +25,21 @@ final class GazeDebugController: ObservableObject {
               mirrored == face.isMirrored, bounds == CGDisplayBounds(CGMainDisplayID()),
               CACurrentMediaTime() >= face.timestamp, CACurrentMediaTime() - face.timestamp < 0.3 else {
             estimate = nil; fixation = detector.update(nil)
+            spatial.update(face: face, gaze: nil, fixation: fixation, displayBounds: CGDisplayBounds(CGMainDisplayID()), now: CACurrentMediaTime())
             return
         }
         let value = GazeEstimator.estimate(face: face, calibration: calibration, displayBounds: bounds)
         estimate = value
         fixation = detector.update(value)
+        spatial.update(face: face, gaze: value, fixation: fixation, displayBounds: bounds, now: CACurrentMediaTime())
     }
     func clearIfStale() {
         if let face = lastFace, CACurrentMediaTime() - face.timestamp >= 0.3 { receive(nil) }
+        spatial.expire(now: CACurrentMediaTime())
     }
     func begin() {
         calibration = nil; calibratedMirroring = nil; calibratedBounds = nil
-        estimate = nil; fixation = detector.update(nil); status = "正在校准"
+        estimate = nil; fixation = detector.update(nil); spatial.clear(); status = "正在校准"
     }
     func cancel() {
         if calibration == nil { status = "请先进行九点校准" }
