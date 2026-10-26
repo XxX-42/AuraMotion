@@ -2,6 +2,7 @@ import QuartzCore
 import Foundation
 import Vision
 import CoreMedia
+import CoreGraphics
 
 public protocol VisionInferenceWorkerDelegate: AnyObject, Sendable {
     func visionWorker(
@@ -13,29 +14,144 @@ public protocol VisionInferenceWorkerDelegate: AnyObject, Sendable {
     )
 }
 
-/// Executes VNDetectHumanHandPoseRequest on a dedicated .userInitiated queue.
-/// Strictly enforces <= 1 in-flight Vision request via FrameMailbox.
+public struct VisionWorkerStatusSnapshot: Sendable, Equatable {
+    public let activeProviderIdentifier: String
+    public let requestedMediaPipeBenchmark: Bool
+    public let mediaPipeBenchmarkAvailable: Bool
+    public let mediaPipeUnavailabilityReason: String?
+    public let roiEnabled: Bool
+    public let currentROI: CGRect
+    public let lastDiagnostics: HandPoseProviderDiagnostics?
+    public let configurationSequence: UInt64
+
+    public init(
+        activeProviderIdentifier: String,
+        requestedMediaPipeBenchmark: Bool,
+        mediaPipeBenchmarkAvailable: Bool,
+        mediaPipeUnavailabilityReason: String?,
+        roiEnabled: Bool,
+        currentROI: CGRect,
+        lastDiagnostics: HandPoseProviderDiagnostics?,
+        configurationSequence: UInt64
+    ) {
+        self.activeProviderIdentifier = activeProviderIdentifier
+        self.requestedMediaPipeBenchmark = requestedMediaPipeBenchmark
+        self.mediaPipeBenchmarkAvailable = mediaPipeBenchmarkAvailable
+        self.mediaPipeUnavailabilityReason = mediaPipeUnavailabilityReason
+        self.roiEnabled = roiEnabled
+        self.currentROI = currentROI
+        self.lastDiagnostics = lastDiagnostics
+        self.configurationSequence = configurationSequence
+    }
+}
+
+/// Executes one provider inference at a time on a dedicated .userInitiated queue.
+/// Frame flow continues to use the existing bounded latest-frame FrameMailbox.
 public final class VisionInferenceWorker: @unchecked Sendable {
+    typealias ProviderFactory = @Sendable (Int, CursorExperimentSettings) -> any HandPoseProvider
+
     private let visionQueue = DispatchQueue(label: "com.auramotion.vision", qos: .userInitiated)
-    private let handPoseRequest: VNDetectHumanHandPoseRequest
+    private let providerFactory: ProviderFactory
+    private var provider: any HandPoseProvider
+    private var activeSettings: CursorExperimentSettings
+    private var activeConfigurationSequence: UInt64 = 0
+
+    private let stateLock = NSLock()
+    private var requestedConfigurationSequence: UInt64 = 0
+    private var mirroredSnapshot = true
+    private var statusStorage: VisionWorkerStatusSnapshot
+
     public let activeRevision: Int
-
     public weak var delegate: VisionInferenceWorkerDelegate?
-    public var isMirrored: Bool = true
 
-    public init() {
-        let rev = VisionRevisionPolicy.selectActiveRevision()
-        self.activeRevision = rev
-        self.handPoseRequest = VNDetectHumanHandPoseRequest()
-        self.handPoseRequest.revision = rev
-        self.handPoseRequest.maximumHandCount = 1
+    /// A lock-protected property retained for existing AppEnvironment callers.
+    public var isMirrored: Bool {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return mirroredSnapshot
+        }
+        set {
+            stateLock.lock()
+            mirroredSnapshot = newValue
+            stateLock.unlock()
+        }
     }
 
-    /// Triggers the worker to evaluate waiting frames from the mailbox.
+    /// An immutable thread-safe snapshot for diagnostics and experiment reporting.
+    public var statusSnapshot: VisionWorkerStatusSnapshot {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return statusStorage
+    }
+
+    public convenience init() {
+        self.init(providerFactory: Self.makeProvider)
+    }
+
+    init(providerFactory: @escaping ProviderFactory) {
+        let revision = VisionRevisionPolicy.selectActiveRevision()
+        let settings = CursorExperimentSettings().normalized()
+        let provider = providerFactory(revision, settings)
+
+        activeRevision = revision
+        self.providerFactory = providerFactory
+        self.provider = provider
+        activeSettings = settings
+        statusStorage = VisionWorkerStatusSnapshot(
+            activeProviderIdentifier: provider.identifier,
+            requestedMediaPipeBenchmark: false,
+            mediaPipeBenchmarkAvailable: MediaPipeHandPoseProvider.isAvailable,
+            mediaPipeUnavailabilityReason: MediaPipeHandPoseProvider.unavailabilityReason,
+            roiEnabled: provider.statusSnapshot.roiEnabled,
+            currentROI: provider.statusSnapshot.currentROI,
+            lastDiagnostics: nil,
+            configurationSequence: 0
+        )
+    }
+
+    private static func makeProvider(
+        revision: Int,
+        settings: CursorExperimentSettings
+    ) -> any HandPoseProvider {
+        if settings.mediaPipeBenchmarkEnabled, MediaPipeHandPoseProvider.isAvailable {
+            return MediaPipeHandPoseProvider()
+        }
+        return VisionHandPoseProvider(revision: revision)
+    }
+
+    /// Applies provider configuration on the same serial queue as inference.
+    /// Completion runs after the prior request has ended and the old provider has
+    /// been stopped/reset, so callers can safely rebase interaction state there.
+    public func reconfigure(
+        _ settings: CursorExperimentSettings,
+        completion: @escaping @Sendable () -> Void
+    ) {
+        let normalizedSettings = settings.normalized()
+        stateLock.lock()
+        requestedConfigurationSequence &+= 1
+        let sequence = requestedConfigurationSequence
+        stateLock.unlock()
+
+        visionQueue.async { [self] in
+            provider.stop()
+            provider.reset()
+
+            let replacement = providerFactory(activeRevision, normalizedSettings)
+            replacement.configure(settings: normalizedSettings)
+            provider = replacement
+            activeSettings = normalizedSettings
+            activeConfigurationSequence = sequence
+            publishStatus(lastDiagnostics: nil)
+            completion()
+        }
+    }
+
+    /// Triggers the worker to evaluate the latest waiting frame from the mailbox.
     public func processMailbox(mailbox: FrameMailbox) {
         visionQueue.async { [weak self] in
-            guard let self = self else { return }
-            guard let carrier = mailbox.beginNextInference() else {
+            guard let self,
+                  let carrier = mailbox.beginNextInference() else {
                 return
             }
             self.executeInference(carrier: carrier, mailbox: mailbox)
@@ -46,56 +162,89 @@ public final class VisionInferenceWorker: @unchecked Sendable {
         var currentCarrier = carrier
 
         while true {
+            let inferenceSequence = activeConfigurationSequence
+            guard inferenceSequence == requestedSequenceSnapshot() else {
+                // Drop a queued old-configuration frame and release the mailbox
+                // before the serialized provider replacement runs.
+                mailbox.clear()
+                return
+            }
+
             let tStart = CACurrentMediaTime()
             let mailboxWait = max(0, tStart - currentCarrier.hostPresentationTime)
-
-            let sampleBuffer = currentCarrier.buffer
-            guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-                let next = mailbox.endInferenceAndAcquireNext()
-                if let n = next {
-                    currentCarrier = n
-                    continue
-                } else {
-                    break
+            guard let pixelBuffer = CMSampleBufferGetImageBuffer(currentCarrier.buffer) else {
+                if inferenceSequence != requestedSequenceSnapshot() {
+                    mailbox.clear()
+                    return
                 }
+                guard let next = mailbox.endInferenceAndAcquireNext() else { return }
+                currentCarrier = next
+                continue
             }
 
-            let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
-            var producedSample: HandSample?
-
-            do {
-                try handler.perform([handPoseRequest])
-                if let observation = handPoseRequest.results?.first {
-                    producedSample = HandObservationDecoder.decode(
-                        observation: observation,
-                        hostTimestamp: currentCarrier.hostPresentationTime,
-                        presentationTime: currentCarrier.hostPresentationTime,
-                        isEstimatedTime: currentCarrier.isEstimatedTime,
-                        trackingID: 1,
-                        isMirrored: isMirrored
-                    )
-                }
-            } catch {
-                producedSample = nil
-            }
-
-            let tDone = CACurrentMediaTime()
-            let inferenceDuration = max(0, tDone - tStart)
-
-            delegate?.visionWorker(
-                self,
-                didProduce: producedSample,
-                carrier: currentCarrier,
-                inferenceDuration: inferenceDuration,
-                mailboxWaitDuration: mailboxWait
+            let output = provider.infer(
+                pixelBuffer: pixelBuffer,
+                hostTimestamp: currentCarrier.hostPresentationTime,
+                presentationTime: currentCarrier.hostPresentationTime,
+                isEstimatedTime: currentCarrier.isEstimatedTime,
+                trackingID: 1,
+                isMirrored: isMirrored
             )
 
-            // Loop immediately if a newer frame arrived while inference was running
-            if let next = mailbox.endInferenceAndAcquireNext() {
-                currentCarrier = next
-            } else {
-                break
+            let inferenceDuration = max(0, CACurrentMediaTime() - tStart)
+            let diagnostics = HandPoseProviderDiagnostics(
+                providerIdentifier: provider.identifier,
+                outcome: output.outcome,
+                inferenceDuration: inferenceDuration,
+                mailboxWaitDuration: mailboxWait,
+                regionOfInterest: output.regionOfInterest,
+                usedFullFrame: output.usedFullFrame,
+                detail: output.detail
+            )
+            publishStatus(lastDiagnostics: diagnostics)
+
+            // Ignore a result if a configuration request arrived while Vision was busy.
+            if inferenceSequence == requestedSequenceSnapshot() {
+                delegate?.visionWorker(
+                    self,
+                    didProduce: output.sample,
+                    carrier: currentCarrier,
+                    inferenceDuration: inferenceDuration,
+                    mailboxWaitDuration: mailboxWait
+                )
             }
+
+            guard inferenceSequence == requestedSequenceSnapshot() else {
+                mailbox.clear()
+                return
+            }
+
+            // Preserve the existing immediate-drain behavior when configuration is stable.
+            guard let next = mailbox.endInferenceAndAcquireNext() else { return }
+            currentCarrier = next
         }
+    }
+
+    private func requestedSequenceSnapshot() -> UInt64 {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return requestedConfigurationSequence
+    }
+
+    private func publishStatus(lastDiagnostics: HandPoseProviderDiagnostics?) {
+        let providerStatus = provider.statusSnapshot
+        let snapshot = VisionWorkerStatusSnapshot(
+            activeProviderIdentifier: providerStatus.providerIdentifier,
+            requestedMediaPipeBenchmark: activeSettings.mediaPipeBenchmarkEnabled,
+            mediaPipeBenchmarkAvailable: MediaPipeHandPoseProvider.isAvailable,
+            mediaPipeUnavailabilityReason: MediaPipeHandPoseProvider.unavailabilityReason,
+            roiEnabled: providerStatus.roiEnabled,
+            currentROI: providerStatus.currentROI,
+            lastDiagnostics: lastDiagnostics,
+            configurationSequence: activeConfigurationSequence
+        )
+        stateLock.lock()
+        statusStorage = snapshot
+        stateLock.unlock()
     }
 }
