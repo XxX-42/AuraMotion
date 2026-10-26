@@ -2,6 +2,7 @@ import SwiftUI
 import AuraMotionCore
 
 public struct HUDView: View {
+    @ObservedObject private var localization = AppLocalization.shared
     @State private var snapshot: HUDSnapshot?
     @State private var isCompact = false
 
@@ -32,7 +33,7 @@ public struct HUDView: View {
 
             // Status Pill
             HStack {
-                Text(snapshot?.feedback ?? snapshot?.state.displayName ?? "INITIALIZING")
+                Text(L10n.tr(snapshot?.feedback ?? snapshot?.state.displayName ?? "INITIALIZING"))
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -65,7 +66,7 @@ public struct HUDView: View {
                             Image(systemName: "hand.raised.slash")
                                 .font(.system(size: 20))
                                 .foregroundColor(.white.opacity(0.3))
-                            Text("No Hand Detected")
+                            Text(L10n.tr("No Hand Detected"))
                                 .font(.system(size: 10))
                                 .foregroundColor(.white.opacity(0.4))
                         }
@@ -80,7 +81,7 @@ public struct HUDView: View {
                     MetricLabel(title: "DROP", value: "\(snapshot?.performance.droppedFrames ?? 0)")
                     Spacer()
                     if let permissionLabel = snapshot?.permissions.compactStatusLabel {
-                        Text(permissionLabel)
+                        Text(L10n.tr(permissionLabel))
                             .font(.system(size: 8, weight: .bold))
                             .foregroundColor(.orange)
                     }

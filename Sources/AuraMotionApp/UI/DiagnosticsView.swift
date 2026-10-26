@@ -2,6 +2,7 @@ import SwiftUI
 import AuraMotionCore
 
 public struct DiagnosticsView: View {
+    @ObservedObject private var localization = AppLocalization.shared
     @State private var snapshot: HUDSnapshot?
     @State private var isRecording = false
     @State private var lastSavedURL: URL?
@@ -11,40 +12,40 @@ public struct DiagnosticsView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("System Telemetry & Diagnostics")
+            Text(L10n.tr("System Telemetry & Diagnostics"))
                 .font(.headline)
 
             Divider()
 
             // Latency Metrics
-            GroupBox(label: Text("Latency & Timing")) {
+            GroupBox(label: Text(L10n.tr("Latency & Timing"))) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("Vision Inference p50:")
+                        Text(L10n.tr("Vision Inference p50:"))
                         Spacer()
                         Text(String(format: "%.2f ms", snapshot?.performance.inferenceDurationP50Ms ?? 0))
                             .monospacedDigit()
                     }
                     HStack {
-                        Text("Vision Inference p95:")
+                        Text(L10n.tr("Vision Inference p95:"))
                         Spacer()
                         Text(String(format: "%.2f ms", snapshot?.performance.inferenceDurationP95Ms ?? 0))
                             .monospacedDigit()
                     }
                     HStack {
-                        Text("Mailbox Wait Time:")
+                        Text(L10n.tr("Mailbox Wait Time:"))
                         Spacer()
                         Text(String(format: "%.2f ms", snapshot?.performance.mailboxWaitMs ?? 0))
                             .monospacedDigit()
                     }
                     HStack {
-                        Text("Capture → Vision result:")
+                        Text(L10n.tr("Capture → Vision result:"))
                         Spacer()
                         Text(String(format: "%.2f ms", snapshot?.performance.pipelineToEventMs ?? 0))
                             .monospacedDigit()
                     }
                     if snapshot?.performance.isLatencyEstimated == true {
-                        Text("* Presentation timestamp anchored to host arrival clock")
+                        Text(L10n.tr("* Presentation timestamp anchored to host arrival clock"))
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
@@ -53,9 +54,9 @@ public struct DiagnosticsView: View {
             }
 
             // Quality & System State
-            GroupBox(label: Text("Cursor Stability")) {
+            GroupBox(label: Text(L10n.tr("Cursor Stability"))) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Horizontal motion: orange is raw; cyan is smoothed. Hold still to compare jitter.")
+                    Text(L10n.tr("Horizontal motion: orange is raw; cyan is smoothed. Hold still to compare jitter."))
                         .font(.caption).foregroundStyle(.secondary)
                     Canvas { context, size in
                         guard cursorHistory.count > 1 else { return }
@@ -72,27 +73,27 @@ public struct DiagnosticsView: View {
                             context.stroke(path, with: .color(raw ? .orange : .cyan), lineWidth: 1.5)
                         }
                     }.frame(height: 70)
-                    Text(String(format: "Index confidence: %.0f%%", Double(snapshot?.sample?.joints[.indexTip]?.confidence ?? 0) * 100))
+                    Text(String(format: L10n.tr("Index confidence: %.0f%%"), Double(snapshot?.sample?.joints[.indexTip]?.confidence ?? 0) * 100))
                         .font(.caption).monospacedDigit()
                 }.padding(4)
             }
 
-            GroupBox(label: Text("System Health")) {
+            GroupBox(label: Text(L10n.tr("System Health"))) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("Thermal Quality Stage:")
+                        Text(L10n.tr("Thermal Quality Stage:"))
                         Spacer()
                         Text("\(snapshot?.thermalStage.rawValue ?? 0)")
                     }
                     HStack {
-                        Text("Dropped Frames:")
+                        Text(L10n.tr("Dropped Frames:"))
                         Spacer()
                         Text("\(snapshot?.performance.droppedFrames ?? 0)")
                     }
                     HStack {
-                        Text("Physical Arbitration Tap:")
+                        Text(L10n.tr("Physical Arbitration Tap:"))
                         Spacer()
-                        Text(snapshot?.isArbitrationActive == true ? "Active" : "Disabled/Cooldown")
+                        Text(L10n.tr(snapshot?.isArbitrationActive == true ? "Active" : "Disabled/Cooldown"))
                             .foregroundColor(snapshot?.isArbitrationActive == true ? .green : .orange)
                     }
                 }
@@ -100,28 +101,28 @@ public struct DiagnosticsView: View {
             }
 
             // Opt-in Landmark Recording
-            GroupBox(label: Text("Landmark Recording (Privacy-Safe)")) {
+            GroupBox(label: Text(L10n.tr("Landmark Recording (Privacy-Safe)"))) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Records anonymized 2D joint coordinates for regression testing. No camera video is ever saved.")
+                    Text(L10n.tr("Records anonymized 2D joint coordinates for regression testing. No camera video is ever saved."))
                         .font(.caption)
                         .foregroundColor(.secondary)
 
                     HStack {
                         Button(action: toggleRecording) {
-                            Text(isRecording ? "Stop & Save Recording" : "Start Recording")
+                            Text(L10n.tr(isRecording ? "Stop & Save Recording" : "Start Recording"))
                         }
                         if isRecording {
                             Circle()
                                 .fill(Color.red)
                                 .frame(width: 8, height: 8)
-                            Text("Recording...")
+                            Text(L10n.tr("Recording..."))
                                 .font(.caption)
                                 .foregroundColor(.red)
                         }
                     }
 
                     if let url = lastSavedURL {
-                        Text("Saved to: \(url.lastPathComponent)")
+                        Text(L10n.tr("Saved to: {filename}", replacing: ["{filename}": url.lastPathComponent]))
                             .font(.caption2)
                             .foregroundColor(.green)
                     }

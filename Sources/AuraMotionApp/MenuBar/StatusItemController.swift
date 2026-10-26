@@ -14,6 +14,12 @@ public final class StatusItemController: NSObject {
     public init(hudWindow: FloatingHUDWindow) {
         self.hudWindow = hudWindow
         super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(languageDidChange),
+            name: AppLocalization.languageDidChangeNotification,
+            object: nil
+        )
         setupMenu()
     }
 
@@ -31,34 +37,34 @@ public final class StatusItemController: NSObject {
         menu.addItem(NSMenuItem(title: "AuraMotion Pro", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
 
-        let pauseItem = NSMenuItem(title: "Pause Gesture Control", action: #selector(togglePause), keyEquivalent: "p")
+        let pauseItem = NSMenuItem(title: L10n.tr("Pause Gesture Control"), action: #selector(togglePause), keyEquivalent: "p")
         pauseItem.target = self
         menu.addItem(pauseItem)
 
-        let hudItem = NSMenuItem(title: "Toggle Floating HUD", action: #selector(toggleHUD), keyEquivalent: "h")
+        let hudItem = NSMenuItem(title: L10n.tr("Toggle Floating HUD"), action: #selector(toggleHUD), keyEquivalent: "h")
         hudItem.target = self
         menu.addItem(hudItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let diagItem = NSMenuItem(title: "Diagnostics & Telemetry...", action: #selector(openDiagnostics), keyEquivalent: "d")
+        let diagItem = NSMenuItem(title: L10n.tr("Diagnostics & Telemetry..."), action: #selector(openDiagnostics), keyEquivalent: "d")
         diagItem.target = self
         menu.addItem(diagItem)
 
-        let calItem = NSMenuItem(title: "Calibration...", action: #selector(openCalibration), keyEquivalent: "c")
+        let calItem = NSMenuItem(title: L10n.tr("Calibration..."), action: #selector(openCalibration), keyEquivalent: "c")
         calItem.target = self
         menu.addItem(calItem)
-        let movementItem = NSMenuItem(title: "Movement Calibration...", action: #selector(openMovementCalibration), keyEquivalent: "")
+        let movementItem = NSMenuItem(title: L10n.tr("Movement Calibration..."), action: #selector(openMovementCalibration), keyEquivalent: "")
         movementItem.target = self
         menu.addItem(movementItem)
 
-        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: L10n.tr("Settings..."), action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let quitItem = NSMenuItem(title: "Quit AuraMotion", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: L10n.tr("Quit AuraMotion"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -119,6 +125,10 @@ public final class StatusItemController: NSObject {
             calibrationWindow = win
         }
         calibrationWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func languageDidChange() {
+        setupMenu()
     }
 
     @objc private func quitApp() {

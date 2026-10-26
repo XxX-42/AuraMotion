@@ -18,19 +18,19 @@ public enum GestureState: String, Sendable, Codable, Equatable {
 
     public var displayName: String {
         switch self {
-        case .idle: return "IDLE"
-        case .clutch: return "READY (HOLD TO ENGAGE)"
-        case .pointer: return "TRACKING"
-        case .pinchArmed: return "PINCH ARMED"
-        case .dragging: return "DRAGGING"
-        case .scrollCandidate: return "SCROLL PENDING"
-        case .scrolling: return "SCROLLING"
-        case .paused: return "PAUSED"
-        case .trackingLost: return "TRACKING LOST - INPUT RELEASED"
-        case .palmCandidate: return "PALM DETECTED"
-        case .palmRest: return "PALM REST"
-        case .palmSwipeLeft: return "SWIPE LEFT ◀"
-        case .palmSwipeRight: return "SWIPE RIGHT ▶"
+        case .idle: return L10n.tr("IDLE")
+        case .clutch: return L10n.tr("READY (HOLD TO ENGAGE)")
+        case .pointer: return L10n.tr("TRACKING")
+        case .pinchArmed: return L10n.tr("PINCH ARMED")
+        case .dragging: return L10n.tr("DRAGGING")
+        case .scrollCandidate: return L10n.tr("SCROLL PENDING")
+        case .scrolling: return L10n.tr("SCROLLING")
+        case .paused: return L10n.tr("PAUSED")
+        case .trackingLost: return L10n.tr("TRACKING LOST - INPUT RELEASED")
+        case .palmCandidate: return L10n.tr("PALM DETECTED")
+        case .palmRest: return L10n.tr("PALM REST")
+        case .palmSwipeLeft: return L10n.tr("SWIPE LEFT ◀")
+        case .palmSwipeRight: return L10n.tr("SWIPE RIGHT ▶")
         }
     }
 

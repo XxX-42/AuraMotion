@@ -16,6 +16,8 @@ public enum GestureCommand: String, CaseIterable, Sendable {
         case .snapRight: return "Right half"
         }
     }
+    /// Localized title for display; `title` remains English for recognition feedback.
+    public var localizedTitle: String { L10n.tr(title) }
     public var symbol: String {
         switch self {
         case .rightClick: return "cursorarrow.click"

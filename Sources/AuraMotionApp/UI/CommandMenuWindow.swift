@@ -40,24 +40,25 @@ final class CommandMenuWindowController {
 }
 
 private struct CommandMenuView: View {
+    @ObservedObject private var localization = AppLocalization.shared
     let menu: CommandMenuSnapshot
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Image(systemName: "hand.draw.fill").foregroundStyle(.cyan)
-                Text("HAND COMMANDS").font(.system(size: 13, weight: .bold, design: .rounded))
+                Text(L10n.tr("HAND COMMANDS")).font(.system(size: 13, weight: .bold, design: .rounded))
                 Spacer()
-                Text("Point · Pinch").font(.caption).foregroundStyle(.secondary)
+                Text(L10n.tr("Point · Pinch")).font(.caption).foregroundStyle(.secondary)
             }
-            Text(menu.awaitingPointer ? "Raise your index finger to begin" : "Move your hand to choose. Pinch to confirm.")
+            Text(L10n.tr(menu.awaitingPointer ? "Raise your index finger to begin" : "Move your hand to choose. Pinch to confirm."))
                 .font(.system(size: 20, weight: .semibold))
             ZStack(alignment: .topLeading) {
                 LazyVGrid(columns: columns, spacing: 10) {
                     ForEach(GestureCommand.allCases, id: \.self) { command in
                         VStack(spacing: 8) {
                             Image(systemName: command.symbol).font(.system(size: 23))
-                            Text(command.title).font(.system(size: 12, weight: .semibold))
+                            Text(command.localizedTitle).font(.system(size: 12, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity).frame(height: 72)
                         .foregroundStyle(menu.selected == command ? Color.white : Color.primary)
@@ -72,7 +73,7 @@ private struct CommandMenuView: View {
                         .allowsHitTesting(false)
                 }
             }
-            Text("Lower or withdraw your hand to dismiss · Closes automatically after 12 seconds")
+            Text(L10n.tr("Lower or withdraw your hand to dismiss · Closes automatically after 12 seconds"))
                 .font(.system(size: 11)).foregroundStyle(.secondary)
         }
         .padding(24)

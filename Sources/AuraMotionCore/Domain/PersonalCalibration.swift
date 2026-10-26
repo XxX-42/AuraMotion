@@ -14,12 +14,12 @@ public struct PersonalCalibration {
         }
         public var instruction: String {
             switch self {
-            case .indexOpen: return "Hold your thumb and index fingertip comfortably apart."
-            case .indexContact: return "Touch your thumb tip to your index fingertip."
-            case .middleOpen: return "Hold your thumb and middle fingertip comfortably apart."
-            case .middleContact: return "Touch your thumb tip to your middle fingertip."
-            case .ringOpen: return "Hold your thumb and ring fingertip comfortably apart."
-            case .ringContact: return "Touch your thumb tip to your ring fingertip."
+            case .indexOpen: return L10n.tr("Hold your thumb and index fingertip comfortably apart.")
+            case .indexContact: return L10n.tr("Touch your thumb tip to your index fingertip.")
+            case .middleOpen: return L10n.tr("Hold your thumb and middle fingertip comfortably apart.")
+            case .middleContact: return L10n.tr("Touch your thumb tip to your middle fingertip.")
+            case .ringOpen: return L10n.tr("Hold your thumb and ring fingertip comfortably apart.")
+            case .ringContact: return L10n.tr("Touch your thumb tip to your ring fingertip.")
             }
         }
     }

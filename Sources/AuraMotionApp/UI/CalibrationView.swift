@@ -2,6 +2,7 @@ import SwiftUI
 import AuraMotionCore
 
 public struct CalibrationView: View {
+    @ObservedObject private var localization = AppLocalization.shared
     @State private var profile = AppEnvironment.shared.currentCalibration
     @State private var session = PersonalCalibration()
     @State private var collecting = false
@@ -12,47 +13,49 @@ public struct CalibrationView: View {
 
     public var body: some View {
         VStack(spacing: 16) {
-            Text("Personal Gesture Calibration")
+            Text(L10n.tr("Personal Gesture Calibration"))
                 .font(.headline)
 
-            Text("Six short recordings personalize Click, Copy and Paste. Gesture control pauses during setup. Camera video is never saved.")
+            Text(L10n.tr("Six short recordings personalize Click, Copy and Paste. Gesture control pauses during setup. Camera video is never saved."))
                 .font(.caption)
                 .foregroundColor(.secondary)
 
             if !started {
-                Button("Start guided setup") {
+                Button(L10n.tr("Start guided setup")) {
                     session = PersonalCalibration()
                     started = true
                     AppEnvironment.shared.setCalibrationActive(true)
                 }
             } else if !session.isComplete {
-                Text("Step \(session.step.rawValue + 1) of 6")
+                Text(L10n.tr("Step {current} of 6", replacing: ["{current}": "\(session.step.rawValue + 1)"]))
                     .font(.headline)
                 Text(session.step.instruction)
                 ProgressView(value: Double(session.count), total: 30)
-                Text(collecting ? "Hold steady: \(session.count) / 30 clear samples" : "Get into position, then start recording.")
+                Text(collecting
+                    ? L10n.tr("Hold steady: {count} / 30 clear samples", replacing: ["{count}": "\(session.count)"])
+                    : L10n.tr("Get into position, then start recording."))
                     .font(.caption)
-                if let message = session.message { Text(message).foregroundColor(.orange) }
-                Button(collecting ? "Recording…" : "Record this pose") {
+                if let message = session.message { Text(L10n.tr(message)).foregroundColor(.orange) }
+                Button(L10n.tr(collecting ? "Recording…" : "Record this pose")) {
                     collecting = true
                 }.disabled(collecting)
             } else {
-                Text(notice).foregroundColor(.secondary)
-                Button("Start again") {
+                Text(L10n.tr(notice)).foregroundColor(.secondary)
+                Button(L10n.tr("Start again")) {
                     session = PersonalCalibration(); notice = ""
                 }
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Cursor Gain:")
+                    Text(L10n.tr("Cursor Gain:"))
                     Slider(value: $profile.cursorGain, in: 0.5...2.5, step: 0.1)
                     Text(String(format: "%.1fx", profile.cursorGain))
                         .monospacedDigit()
                 }
 
                 HStack {
-                    Text("Pinch Sensitivity:")
+                    Text(L10n.tr("Pinch Sensitivity:"))
                     Slider(value: Binding(
                         get: { Double(profile.pinchStartThreshold) },
                         set: { profile.pinchStartThreshold = CGFloat($0) }
@@ -63,7 +66,7 @@ public struct CalibrationView: View {
             }
             .padding()
 
-            Button(started ? "Save and finish" : "Save adjustments") {
+            Button(L10n.tr(started ? "Save and finish" : "Save adjustments")) {
                 if started {
                     guard let learned = session.applying(to: profile) else {
                         notice = "Complete all six steps. If open and touching poses overlap, start again with your fingertips clearly separated for the open poses."
@@ -81,11 +84,11 @@ public struct CalibrationView: View {
             .disabled(started && !session.isComplete)
             .keyboardShortcut(.defaultAction)
             if started {
-                Button("Cancel setup") {
+                Button(L10n.tr("Cancel setup")) {
                     collecting = false; started = false
                     AppEnvironment.shared.setCalibrationActive(false)
                 }
-            } else if !notice.isEmpty { Text(notice).font(.caption) }
+            } else if !notice.isEmpty { Text(L10n.tr(notice)).font(.caption) }
         }
         .padding(20)
         .frame(width: 420, height: 560)

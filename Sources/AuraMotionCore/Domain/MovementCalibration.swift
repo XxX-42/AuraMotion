@@ -8,9 +8,9 @@ public struct MovementCalibration {
         case still, slow, fast
         public var instruction: String {
             switch self {
-            case .still: return "Point with your index finger and hold comfortably still."
-            case .slow: return "Keep pointing and sweep your hand slowly from side to side."
-            case .fast: return "Keep pointing and make quicker, comfortable side-to-side sweeps."
+            case .still: return L10n.tr("Point with your index finger and hold comfortably still.")
+            case .slow: return L10n.tr("Keep pointing and sweep your hand slowly from side to side.")
+            case .fast: return L10n.tr("Keep pointing and make quicker, comfortable side-to-side sweeps.")
             }
         }
     }
