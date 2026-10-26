@@ -159,6 +159,7 @@ public enum L10n {
         "Waiting for a tracked pointer…": "等待有效指针跟踪…",
         "Waiting for a tracked pointer… {seconds}": "等待有效指针跟踪… 剩余 {seconds} 秒",
         "HUD Display Mode": "悬浮面板显示模式",
+        "Preview Mirror": "镜像",
         "Joint Numbers": "节点编号",
         "Skeleton Size": "节点和线条大小",
         "On": "开",

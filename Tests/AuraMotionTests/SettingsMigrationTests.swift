@@ -27,6 +27,7 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertFalse(settings.isCameraMirrored)
         XCTAssertFalse(settings.showHUD)
         XCTAssertFalse(settings.hudShowsCamera)
+        XCTAssertTrue(settings.hudPreviewMirrored)
         XCTAssertFalse(settings.hudShowsJointNumbers)
         XCTAssertEqual(settings.hudSkeletonScale, 1)
         XCTAssertEqual(settings.clutchDwellTime, 0.12)
@@ -52,9 +53,11 @@ final class SettingsMigrationTests: XCTestCase {
         let repository = SettingsRepository(userDefaults: defaults)
         var settings = AppSettings()
         settings.hudShowsJointNumbers = true
+        settings.hudPreviewMirrored = false
         settings.hudSkeletonScale = 2.4
         repository.saveSettings(settings)
         XCTAssertTrue(repository.loadSettings().hudShowsJointNumbers)
+        XCTAssertFalse(repository.loadSettings().hudPreviewMirrored)
         XCTAssertEqual(repository.loadSettings().hudSkeletonScale, 2.4)
         settings.hudSkeletonScale = 100
         repository.saveSettings(settings)

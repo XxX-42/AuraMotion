@@ -17,6 +17,7 @@ public struct HUDSnapshot: Sendable {
     public var commandMenu: CommandMenuSnapshot? = nil
     public var showHUD = true
     public var hudShowsCamera = false
+    public var hudPreviewMirrored = true
     public var isCameraMirrored = true
     public var cameraAspectRatio = 16.0 / 9.0
     public var isVideoDataMirrored = false
@@ -494,11 +495,12 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     }
 
     /// Changes only the HUD drawing preferences on the interaction queue.
-    public func updateHUDJointDisplay(showNumbers: Bool? = nil, scale: Double? = nil) {
+    public func updateHUDJointDisplay(showNumbers: Bool? = nil, scale: Double? = nil, previewMirrored: Bool? = nil) {
         interactionQueue.async { [weak self] in
             guard let self else { return }
             var updated = self.currentSettings
             if let showNumbers { updated.hudShowsJointNumbers = showNumbers }
+            if let previewMirrored { updated.hudPreviewMirrored = previewMirrored }
             if let scale, scale.isFinite { updated.hudSkeletonScale = min(3, max(0.5, scale)) }
             guard updated != self.currentSettings else { return }
             self.currentSettings = updated
@@ -867,6 +869,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
         snapshot.commandMenu = stateMachine.commandMenu.snapshot
         snapshot.showHUD = currentSettings.showHUD
         snapshot.hudShowsCamera = currentSettings.hudShowsCamera
+        snapshot.hudPreviewMirrored = currentSettings.hudPreviewMirrored
         snapshot.isCameraMirrored = currentSettings.isCameraMirrored
         snapshot.cameraAspectRatio = capturePipeline.previewAspectRatio
         snapshot.isVideoDataMirrored = capturePipeline.isVideoDataMirrored

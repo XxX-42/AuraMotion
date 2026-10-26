@@ -7,6 +7,7 @@ public struct HUDView: View {
     @State private var snapshot: HUDSnapshot?
     @State private var isCompact = false
     @State private var showJointNumbers = AppEnvironment.shared.currentSettings.hudShowsJointNumbers
+    @State private var previewMirrored = AppEnvironment.shared.currentSettings.hudPreviewMirrored
     @State private var skeletonScale = AppEnvironment.shared.currentSettings.hudSkeletonScale
     @State private var pendingScaleSave: DispatchWorkItem?
     @State private var resizeStartMouse: CGPoint?
@@ -31,14 +32,14 @@ public struct HUDView: View {
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
                 Text("AuraMotion Pro")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.system(size: 16.5, weight: .bold, design: .monospaced))
                     .foregroundColor(.white.opacity(0.9))
 
                 Spacer()
 
                 Button(action: { isCompact.toggle() }) {
                     Image(systemName: isCompact ? "chevron.down" : "chevron.up")
-                        .font(.system(size: 9))
+                        .font(.system(size: 13.5))
                         .foregroundColor(.white.opacity(0.6))
                 }
                 .buttonStyle(.plain)
@@ -58,7 +59,9 @@ public struct HUDView: View {
             // Status Pill
             HStack {
                 Text(L10n.tr(snapshot?.feedback ?? snapshot?.state.displayName ?? "INITIALIZING"))
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(statusColor.opacity(0.25))
@@ -69,7 +72,7 @@ public struct HUDView: View {
 
                 if let p95 = snapshot?.performance.inferenceDurationP95Ms {
                     Text(String(format: "%.1f ms", p95))
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .font(.system(size: 13.5, weight: .medium, design: .monospaced))
                         .foregroundColor(.white.opacity(0.7))
                 }
             }
@@ -84,17 +87,34 @@ public struct HUDView: View {
                     Text(effectiveProviderLabel)
                         .lineLimit(1)
                 }
-                .font(.system(size: 8, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.white.opacity(0.62))
                 .padding(.horizontal, 10)
 
                 HStack(spacing: 6) {
                     Button {
+                        previewMirrored.toggle()
+                        AppEnvironment.shared.updateHUDJointDisplay(previewMirrored: previewMirrored)
+                    } label: {
+                        Text(L10n.tr("Preview Mirror"))
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .fixedSize(horizontal: true, vertical: false)
+                            .foregroundColor(previewMirrored ? .cyan : .white.opacity(0.7))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.white.opacity(previewMirrored ? 0.16 : 0.07), in: RoundedRectangle(cornerRadius: 5))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(snapshot?.hudShowsCamera != true)
+                    .accessibilityValue(previewMirrored ? L10n.tr("On") : L10n.tr("Off"))
+
+                    Button {
                         showJointNumbers.toggle()
                         AppEnvironment.shared.updateHUDJointDisplay(showNumbers: showJointNumbers)
                     } label: {
                         Text(L10n.tr("Joint Numbers"))
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .fixedSize(horizontal: true, vertical: false)
                             .foregroundColor(showJointNumbers ? .cyan : .white.opacity(0.7))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
@@ -107,14 +127,14 @@ public struct HUDView: View {
                         .controlSize(.mini)
                         .accessibilityLabel(L10n.tr("Skeleton Size"))
                     Text(String(format: "%.1f×", skeletonScale))
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(.system(size: 13.5, design: .monospaced))
                         .foregroundColor(.white.opacity(0.7))
                 }
                 .padding(.horizontal, 10)
 
                 if snapshot?.isVisionReconfigurationPending == true {
                     Text(L10n.tr("Reconfiguring vision provider…"))
-                        .font(.system(size: 8))
+                        .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.55))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 10)
@@ -128,10 +148,7 @@ public struct HUDView: View {
                     if snapshot?.showHUD == true && snapshot?.hudShowsCamera == true {
                         CameraPreviewView(
                             session: AppEnvironment.shared.capturePipeline.previewSession,
-                            // Preview layers and Vision's point coordinates use opposite
-                            // horizontal conventions on the built-in camera. Match the
-                            // video to the already-mirrored gesture landmarks.
-                            isMirrored: (snapshot?.isCameraMirrored ?? true) == (snapshot?.isVideoDataMirrored ?? false)
+                            isMirrored: ((snapshot?.isCameraMirrored ?? true) == (snapshot?.isVideoDataMirrored ?? false)) != previewMirrored
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
@@ -139,15 +156,15 @@ public struct HUDView: View {
                     if let sample = snapshot?.sample {
                         SkeletonView(sample: sample, showNumbers: showJointNumbers,
                                      scale: skeletonScale,
-                                     flipHorizontally: snapshot?.hudShowsCamera == true)
+                                     flipHorizontally: snapshot?.hudShowsCamera == true && !previewMirrored)
                             .allowsHitTesting(false)
                     } else {
                         VStack(spacing: 4) {
                             Image(systemName: "hand.raised.slash")
-                                .font(.system(size: 20))
+                                .font(.system(size: 30))
                                 .foregroundColor(.white.opacity(0.3))
                             Text(L10n.tr("No Hand Detected"))
-                                .font(.system(size: 10))
+                                .font(.system(size: 15))
                                 .foregroundColor(.white.opacity(0.4))
                         }
                     }
@@ -165,7 +182,7 @@ public struct HUDView: View {
                     Spacer()
                     if let permissionLabel = snapshot?.permissions.compactStatusLabel {
                         Text(L10n.tr(permissionLabel))
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.orange)
                     }
                 }
@@ -185,7 +202,7 @@ public struct HUDView: View {
         )
         .overlay(alignment: .bottomLeading) {
             Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 8, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(0.65))
                 .frame(width: 22, height: 22)
                 .contentShape(Rectangle())
@@ -283,6 +300,10 @@ private struct CameraPreviewView: NSViewRepresentable {
         configure(preview)
     }
 
+    static func dismantleNSView(_ view: NSView, coordinator: ()) {
+        (view.layer as? AVCaptureVideoPreviewLayer)?.session = nil
+    }
+
     private func configure(_ preview: AVCaptureVideoPreviewLayer) {
         guard let connection = preview.connection, connection.isVideoMirroringSupported else { return }
         connection.automaticallyAdjustsVideoMirroring = false
@@ -297,10 +318,10 @@ struct MetricLabel: View {
     var body: some View {
         HStack(spacing: 2) {
             Text(title)
-                .font(.system(size: 8, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(0.4))
             Text(value)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .font(.system(size: 13.5, weight: .bold, design: .monospaced))
                 .foregroundColor(.white.opacity(0.8))
         }
     }
@@ -354,7 +375,7 @@ struct SkeletonView: View {
                                    height: (name == .indexTip ? 6 : 4) * scale)
                         if showNumbers {
                             Text("\(name.landmarkNumber)")
-                                .font(.system(size: 9 * scale, weight: .bold, design: .monospaced))
+                                .font(.system(size: 13.5 * scale, weight: .bold, design: .monospaced))
                                 .foregroundColor(.white)
                                 .shadow(color: .black, radius: 2)
                                 .fixedSize()

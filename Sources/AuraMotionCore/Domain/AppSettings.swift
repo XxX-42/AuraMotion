@@ -22,6 +22,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
     public var preferredHandedness: EstimatedHandedness
     public var showHUD: Bool
     public var hudShowsCamera: Bool
+    public var hudPreviewMirrored: Bool
     public var hudShowsJointNumbers: Bool
     public var hudSkeletonScale: Double
     public var showClickFeedback: Bool
@@ -40,6 +41,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         preferredHandedness: EstimatedHandedness = .right,
         showHUD: Bool = true,
         hudShowsCamera: Bool = false,
+        hudPreviewMirrored: Bool = true,
         hudShowsJointNumbers: Bool = false,
         hudSkeletonScale: Double = 1,
         showClickFeedback: Bool = true,
@@ -57,6 +59,7 @@ public struct AppSettings: Sendable, Codable, Equatable {
         self.preferredHandedness = preferredHandedness
         self.showHUD = showHUD
         self.hudShowsCamera = hudShowsCamera
+        self.hudPreviewMirrored = hudPreviewMirrored
         self.hudShowsJointNumbers = hudShowsJointNumbers
         self.hudSkeletonScale = hudSkeletonScale
         self.showClickFeedback = showClickFeedback

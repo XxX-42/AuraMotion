@@ -67,6 +67,9 @@ public struct SettingsView: View {
             if settings.hudShowsJointNumbers != snapshot.hudShowsJointNumbers {
                 settings.hudShowsJointNumbers = snapshot.hudShowsJointNumbers
             }
+            if settings.hudPreviewMirrored != snapshot.hudPreviewMirrored {
+                settings.hudPreviewMirrored = snapshot.hudPreviewMirrored
+            }
             if settings.hudSkeletonScale != snapshot.hudSkeletonScale {
                 settings.hudSkeletonScale = snapshot.hudSkeletonScale
             }
