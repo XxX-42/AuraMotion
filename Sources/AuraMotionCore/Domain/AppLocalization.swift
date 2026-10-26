@@ -62,6 +62,8 @@ public enum L10n {
         // Language names
         "Simplified Chinese": "简体中文",
         "English": "English",
+        "%.0f ms": "%.0f 毫秒",
+        "%.1f s": "%.1f 秒",
 
         // Cursor experiments and runtime A/B console
         "Cursor Experiments": "光标实验",
