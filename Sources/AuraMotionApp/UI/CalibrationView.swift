@@ -109,7 +109,7 @@ public struct CalibrationView: View {
             started = false
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
-            guard let window = note.object as? NSWindow, window.title == "AuraMotion Calibration" else { return }
+            guard let window = note.object as? NSWindow, window.identifier?.rawValue == "AuraMotion Calibration" else { return }
             collecting = false; started = false
             AppEnvironment.shared.setCalibrationActive(false)
         }

@@ -69,6 +69,12 @@ public final class StatusItemController: NSObject {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+        for (window, title) in [(settingsWindow, "AuraMotion Settings"),
+                                (diagnosticsWindow, "AuraMotion Diagnostics"),
+                                (calibrationWindow, "AuraMotion Calibration"),
+                                (movementCalibrationWindow, "AuraMotion Movement Calibration")] {
+            window?.title = L10n.tr(title)
+        }
     }
 
     @objc private func togglePause() {
@@ -89,7 +95,9 @@ public final class StatusItemController: NSObject {
                 backing: .buffered,
                 defer: false
             )
-            win.title = "AuraMotion Diagnostics"
+            win.identifier = NSUserInterfaceItemIdentifier("AuraMotion Diagnostics")
+            win.title = L10n.tr("AuraMotion Diagnostics")
+            win.isReleasedWhenClosed = false
             win.contentView = NSHostingView(rootView: DiagnosticsView())
             diagnosticsWindow = win
         }
@@ -104,7 +112,9 @@ public final class StatusItemController: NSObject {
                 backing: .buffered,
                 defer: false
             )
-            win.title = "AuraMotion Settings"
+            win.identifier = NSUserInterfaceItemIdentifier("AuraMotion Settings")
+            win.title = L10n.tr("AuraMotion Settings")
+            win.isReleasedWhenClosed = false
             win.contentView = NSHostingView(rootView: SettingsView())
             settingsWindow = win
         }
@@ -120,7 +130,9 @@ public final class StatusItemController: NSObject {
                 backing: .buffered,
                 defer: false
             )
-            win.title = "AuraMotion Calibration"
+            win.identifier = NSUserInterfaceItemIdentifier("AuraMotion Calibration")
+            win.title = L10n.tr("AuraMotion Calibration")
+            win.isReleasedWhenClosed = false
             win.contentView = NSHostingView(rootView: CalibrationView())
             calibrationWindow = win
         }
@@ -140,7 +152,8 @@ public final class StatusItemController: NSObject {
         if movementCalibrationWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 440, height: 390),
                                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            window.title = "AuraMotion Movement Calibration"
+            window.identifier = NSUserInterfaceItemIdentifier("AuraMotion Movement Calibration")
+            window.title = L10n.tr("AuraMotion Movement Calibration")
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(rootView: MovementCalibrationView())
             movementCalibrationWindow = window

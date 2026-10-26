@@ -45,7 +45,7 @@ struct MovementCalibrationView: View {
         }
         .onDisappear { finish() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
-            if (note.object as? NSWindow)?.title == "AuraMotion Movement Calibration" { finish() }
+            if (note.object as? NSWindow)?.identifier?.rawValue == "AuraMotion Movement Calibration" { finish() }
         }
     }
     private func finish() {

@@ -76,9 +76,9 @@ public struct HUDView: View {
 
                 // Telemetry Footer
                 HStack(spacing: 12) {
-                    MetricLabel(title: "CAP", value: String(format: "%.0f", snapshot?.performance.captureFPS ?? 0))
-                    MetricLabel(title: "INF", value: String(format: "%.0f", snapshot?.performance.inferenceFPS ?? 0))
-                    MetricLabel(title: "DROP", value: "\(snapshot?.performance.droppedFrames ?? 0)")
+                    MetricLabel(title: L10n.tr("CAP"), value: String(format: "%.0f", snapshot?.performance.captureFPS ?? 0))
+                    MetricLabel(title: L10n.tr("INF"), value: String(format: "%.0f", snapshot?.performance.inferenceFPS ?? 0))
+                    MetricLabel(title: L10n.tr("DROP"), value: "\(snapshot?.performance.droppedFrames ?? 0)")
                     Spacer()
                     if let permissionLabel = snapshot?.permissions.compactStatusLabel {
                         Text(L10n.tr(permissionLabel))
