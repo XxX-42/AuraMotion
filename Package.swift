@@ -8,6 +8,7 @@ let package = Package(
     ],
     products: [
         .executable(name: "AuraMotion", targets: ["AuraMotionApp"]),
+        .executable(name: "CursorReplay", targets: ["CursorReplay"]),
         .library(name: "AuraMotionCore", targets: ["AuraMotionCore"])
     ],
     targets: [
@@ -29,6 +30,10 @@ let package = Package(
             dependencies: [
                 "AuraMotionCore"
             ]
+        ),
+        .executableTarget(
+            name: "CursorReplay",
+            dependencies: ["AuraMotionCore"]
         ),
         // Comprehensive test suite
         .testTarget(

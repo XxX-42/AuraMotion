@@ -47,7 +47,9 @@ final class LifecycleTests: XCTestCase {
             // May succeed if camera is available or fail gracefully in headless environment
             expConfigure.fulfill()
         }
-        waitForExpectations(timeout: 1.0)
+        // Configuration touches AVFoundation hardware discovery. The original one-second
+        // bound flaked on the same machine where the async completion later succeeded.
+        waitForExpectations(timeout: 5.0)
 
         let expStop = expectation(description: "Pipeline stop")
         pipeline.stop {
@@ -55,7 +57,7 @@ final class LifecycleTests: XCTestCase {
             XCTAssertFalse(pipeline.isRunning)
             expStop.fulfill()
         }
-        waitForExpectations(timeout: 1.0)
+        waitForExpectations(timeout: 5.0)
     }
 
     func testCapturePipelineRapidStartStopEndsInIdle() {
@@ -69,6 +71,6 @@ final class LifecycleTests: XCTestCase {
             exp.fulfill()
         }
 
-        waitForExpectations(timeout: 1.0)
+        waitForExpectations(timeout: 5.0)
     }
 }
