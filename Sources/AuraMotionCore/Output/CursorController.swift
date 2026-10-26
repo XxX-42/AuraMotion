@@ -20,6 +20,7 @@ public final class CursorController: @unchecked Sendable {
     private let baselineFusion = HandCursorFusion()
     private let dynamics = CursorDynamicsController(settings: .init())
     private var relativeMapping = RelativePointerMapping()
+    private var relativeDisplayBounds: [CGRect] = []
     private var experimentSettings = CursorExperimentSettings()
     private var interactionState: GestureState = .idle
     private var motionPhase: CursorMotionPhase = .frozen
@@ -58,6 +59,7 @@ public final class CursorController: @unchecked Sendable {
 
     public init(profile: CalibrationProfile) {
         self.mapper = CoordinateMapper(profile: profile)
+        self.relativeDisplayBounds = Self.activeDisplayBounds(fallback: profile.displayBounds)
         applyTuning(profile)
     }
 
@@ -90,6 +92,7 @@ public final class CursorController: @unchecked Sendable {
 
     public func updateProfile(_ profile: CalibrationProfile) {
         self.mapper = CoordinateMapper(profile: profile)
+        relativeDisplayBounds = Self.activeDisplayBounds(fallback: profile.displayBounds)
         applyTuning(profile)
         reset()
     }
@@ -101,6 +104,9 @@ public final class CursorController: @unchecked Sendable {
         let cursor = valid(cursorPosition) ?? lastOutput
         let previousSettings = experimentSettings
         let shouldRebase = requiresRebase(for: normalized)
+        if normalized.relativeMappingEnabled {
+            relativeDisplayBounds = Self.activeDisplayBounds(fallback: mapper.profile.displayBounds)
+        }
 
         if normalized.effectiveMappingMode == .relativeRebased {
             transitionBias.clear()
@@ -454,6 +460,7 @@ public final class CursorController: @unchecked Sendable {
         lastDiagnostics.rawAnchor = absoluteMapped
 
         let bounds = mapper.profile.displayBounds
+        let relativeBounds = relativeDisplayBounds.isEmpty ? [bounds] : relativeDisplayBounds
         let jumpThreshold = max(80, hypot(bounds.width, bounds.height) * 0.04)
         if let previous = lastRaw, hypot(mapped.x - previous.x, mapped.y - previous.y) > jumpThreshold {
             if let pending = pendingJump, hypot(mapped.x - pending.x, mapped.y - pending.y) <= jumpThreshold {
@@ -472,7 +479,7 @@ public final class CursorController: @unchecked Sendable {
             ? (relativeMapping.map(
                 target: mapped,
                 currentCursor: lastOutput,
-                displayBounds: mapper.profile.displayBounds
+                displayBounds: relativeBounds
             ) ?? lastOutput ?? mapped)
             : mapped
         let filtered = filter.filter(point: target, timestamp: timestamp)
@@ -485,7 +492,9 @@ public final class CursorController: @unchecked Sendable {
 
         let result = dynamics.process(target: dynamicsTarget, timestamp: timestamp, phase: motionPhase)
         guard let result else { return lastOutput }
-        let boundedPoint = clamp(result.point, to: bounds)
+        let boundedPoint = experimentSettings.effectiveMappingMode == .relativeRebased
+            ? clamp(result.point, to: relativeBounds)
+            : clamp(result.point, to: bounds)
         if boundedPoint != result.point { dynamics.reset(at: boundedPoint) }
         lastOutput = boundedPoint
         lastDiagnostics.cursor = boundedPoint
@@ -533,6 +542,43 @@ public final class CursorController: @unchecked Sendable {
             x: min(max(point.x, bounds.minX), bounds.maxX),
             y: min(max(point.y, bounds.minY), bounds.maxY)
         )
+    }
+
+    private func clamp(_ point: CGPoint, to bounds: [CGRect]) -> CGPoint {
+        let validBounds = bounds.filter {
+            $0.origin.x.isFinite && $0.origin.y.isFinite
+                && $0.width.isFinite && $0.height.isFinite
+                && $0.width > 0 && $0.height > 0
+        }
+        guard !validBounds.isEmpty else { return point }
+        if validBounds.contains(where: { $0.contains(point) }) { return point }
+        return validBounds.map { rect -> (point: CGPoint, distanceSquared: CGFloat) in
+            let candidate = CGPoint(
+                x: min(max(point.x, rect.minX), rect.maxX),
+                y: min(max(point.y, rect.minY), rect.maxY)
+            )
+            let dx = candidate.x - point.x
+            let dy = candidate.y - point.y
+            return (candidate, dx * dx + dy * dy)
+        }.min { $0.distanceSquared < $1.distanceSquared }?.point ?? point
+    }
+
+    private static func activeDisplayBounds(fallback: CGRect) -> [CGRect] {
+        var displayCount: UInt32 = 0
+        guard CGGetActiveDisplayList(0, nil, &displayCount) == .success, displayCount > 0 else {
+            return [fallback]
+        }
+        var displayIDs = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
+        let result = displayIDs.withUnsafeMutableBufferPointer { buffer in
+            CGGetActiveDisplayList(displayCount, buffer.baseAddress, &displayCount)
+        }
+        guard result == .success else { return [fallback] }
+        let bounds = displayIDs.prefix(Int(displayCount)).map(CGDisplayBounds).filter {
+            $0.origin.x.isFinite && $0.origin.y.isFinite
+                && $0.width.isFinite && $0.height.isFinite
+                && $0.width > 0 && $0.height > 0
+        }
+        return bounds.isEmpty ? [fallback] : bounds
     }
 
     private func updateFrozenDiagnostics(timestamp: TimeInterval) {

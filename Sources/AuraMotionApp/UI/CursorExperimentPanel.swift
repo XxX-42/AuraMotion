@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 import AuraMotionCore
 
@@ -6,7 +7,10 @@ struct CursorExperimentPanel: View {
     @Binding private var settings: CursorExperimentSettings
     private let isCameraAuthorized: Bool
     @ObservedObject private var localization = AppLocalization.shared
+    @State private var isPreparingSample = false
+    @State private var isWaitingForTracking = false
     @State private var isRecordingSample = false
+    @State private var sampleSecondsRemaining = 0
     @State private var isExportingMetrics = false
     @State private var metricsStatusKey: String?
     @State private var lastExportURL: URL?
@@ -78,6 +82,7 @@ struct CursorExperimentPanel: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onDisappear { cancelSample() }
     }
 
     private var presetBinding: Binding<CursorExperimentPreset> {
@@ -295,6 +300,7 @@ struct CursorExperimentPanel: View {
                     Text(L10n.tr("Fast movement")).tag(CursorExperimentTaskPhase.fastMove)
                     Text(L10n.tr("Unlabelled")).tag(CursorExperimentTaskPhase.other)
                 }
+                .disabled(isSampleActive)
                 Text(L10n.tr("Purpose labels the full sample; target metrics still need target coordinates."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -305,20 +311,58 @@ struct CursorExperimentPanel: View {
                         AppEnvironment.shared.resetExperimentMetrics()
                         metricsStatusKey = "Metrics reset."
                     }
-                    .disabled(isRecordingSample)
+                    .disabled(isSampleActive)
 
                     Button(L10n.tr("Export A/B Metrics")) {
                         exportMetrics()
                     }
-                    .disabled(isExportingMetrics || isRecordingSample)
+                    .disabled(isExportingMetrics || isSampleActive)
                 }
 
-                if isRecordingSample {
+                Text(L10n.tr("Raise your hand, extend only your index finger, and keep your thumb away from your middle and ring fingers. Recording starts when the HUD says TRACKING."))
+                    .font(.callout.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+
+                if isPreparingSample {
+                    HStack(alignment: .top) {
+                        ProgressView()
+                            .controlSize(.small)
+                        VStack(alignment: .leading, spacing: 4) {
+                            if isWaitingForTracking {
+                                Text(L10n.tr(
+                                    "Waiting for a tracked pointer… {seconds}",
+                                    replacing: ["{seconds}": "\(sampleSecondsRemaining)"]
+                                ))
+                                    .font(.headline)
+                            } else {
+                                Text(L10n.tr(
+                                    "Preparing camera sample… {seconds}",
+                                    replacing: ["{seconds}": "\(sampleSecondsRemaining)"]
+                                ))
+                                .font(.headline)
+                            }
+                            Text(L10n.tr("Raise your hand, extend only your index finger, and keep your thumb away from your middle and ring fingers. Recording starts when the HUD says TRACKING."))
+                                .font(.caption)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        Button(L10n.tr("Cancel Sample")) { cancelSample() }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+                } else if isRecordingSample {
                     HStack {
                         ProgressView()
                             .controlSize(.small)
-                        Text(L10n.tr("Recording camera sample…"))
-                            .font(.caption)
+                        Text(L10n.tr(
+                            "Recording camera sample… {seconds}",
+                            replacing: ["{seconds}": "\(sampleSecondsRemaining)"]
+                        ))
+                        .font(.headline)
                         Spacer()
                         Button(L10n.tr("Stop Sample")) {
                             stopSample()
@@ -328,7 +372,7 @@ struct CursorExperimentPanel: View {
                     Button(L10n.tr("Start 15s Camera A/B Sample")) {
                         startSample()
                     }
-                    .disabled(isExportingMetrics || !isCameraAuthorized)
+                    .disabled(isExportingMetrics || !isCameraAuthorized || isSampleActive)
                 }
 
                 if !isCameraAuthorized {
@@ -359,27 +403,119 @@ struct CursorExperimentPanel: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("HUDSnapshotUpdated")).receive(on: DispatchQueue.main)) { note in
+            guard isPreparingSample,
+                  isWaitingForTracking,
+                  let snapshot = note.object as? HUDSnapshot,
+                  isFreshPointerSnapshot(snapshot) else { return }
+            beginRecording(sampleID: recordingID)
+        }
     }
 
     private func startSample() {
-        guard !isRecordingSample else { return }
-        isRecordingSample = true
+        guard !isSampleActive else { return }
         metricsStatusKey = nil
         let sampleID = UUID()
         recordingID = sampleID
-        AppEnvironment.shared.startExperimentRecording(duration: 15, phase: samplePurpose)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
-            guard recordingID == sampleID else { return }
-            AppEnvironment.shared.stopExperimentRecording()
-            isRecordingSample = false
-        }
+        isPreparingSample = true
+        isWaitingForTracking = false
+        sampleSecondsRemaining = 5
+        schedulePreparationCountdown(sampleID: sampleID, secondsRemaining: 5)
     }
 
     private func stopSample() {
         guard isRecordingSample else { return }
         recordingID = UUID()
         isRecordingSample = false
+        sampleSecondsRemaining = 0
         AppEnvironment.shared.stopExperimentRecording()
+    }
+
+    private var isSampleActive: Bool { isPreparingSample || isRecordingSample }
+
+    private func schedulePreparationCountdown(sampleID: UUID, secondsRemaining: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard recordingID == sampleID, isPreparingSample else { return }
+            let next = secondsRemaining - 1
+            if next > 0 {
+                sampleSecondsRemaining = next
+                schedulePreparationCountdown(sampleID: sampleID, secondsRemaining: next)
+            } else {
+                isWaitingForTracking = true
+                sampleSecondsRemaining = 30
+                scheduleTrackingWait(sampleID: sampleID, secondsRemaining: 30)
+            }
+        }
+    }
+
+    private func scheduleTrackingWait(sampleID: UUID, secondsRemaining: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard recordingID == sampleID,
+                  isPreparingSample,
+                  isWaitingForTracking else { return }
+            let next = secondsRemaining - 1
+            if next > 0 {
+                sampleSecondsRemaining = next
+                scheduleTrackingWait(sampleID: sampleID, secondsRemaining: next)
+            } else {
+                recordingID = UUID()
+                isPreparingSample = false
+                isWaitingForTracking = false
+                sampleSecondsRemaining = 0
+                metricsStatusKey = "No tracked pointer was detected within 30 seconds."
+            }
+        }
+    }
+
+    private func isFreshPointerSnapshot(_ snapshot: HUDSnapshot) -> Bool {
+        guard snapshot.state == .pointer,
+              let sample = snapshot.sample,
+              snapshot.cursorLocation != nil,
+              snapshot.cursorDiagnostics?.phase == .pointer else { return false }
+        let age = CACurrentMediaTime() - sample.hostTimestamp
+        return age.isFinite && age >= -0.05 && age <= 0.25
+    }
+
+    private func beginRecording(sampleID: UUID) {
+        guard recordingID == sampleID,
+              isPreparingSample,
+              isWaitingForTracking else { return }
+        isPreparingSample = false
+        isWaitingForTracking = false
+        isRecordingSample = true
+        sampleSecondsRemaining = 15
+        metricsStatusKey = nil
+        AppEnvironment.shared.startExperimentRecording(duration: 15, phase: samplePurpose)
+        scheduleRecordingCountdown(sampleID: sampleID, secondsRemaining: 15)
+    }
+
+    private func scheduleRecordingCountdown(sampleID: UUID, secondsRemaining: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard recordingID == sampleID, isRecordingSample else { return }
+            let next = secondsRemaining - 1
+            if next > 0 {
+                sampleSecondsRemaining = next
+                scheduleRecordingCountdown(sampleID: sampleID, secondsRemaining: next)
+            } else {
+                recordingID = UUID()
+                sampleSecondsRemaining = 0
+                isRecordingSample = false
+                AppEnvironment.shared.stopExperimentRecording()
+                metricsStatusKey = "Metrics sample complete."
+            }
+        }
+    }
+
+    private func cancelSample() {
+        guard isSampleActive else { return }
+        let wasRecording = isRecordingSample
+        recordingID = UUID()
+        isPreparingSample = false
+        isWaitingForTracking = false
+        isRecordingSample = false
+        sampleSecondsRemaining = 0
+        if wasRecording { AppEnvironment.shared.stopExperimentRecording() }
+        metricsStatusKey = "Sample cancelled."
     }
 
     private func exportMetrics() {

@@ -56,6 +56,17 @@ public struct RelativePointerMapping: Sendable {
         currentCursor: CGPoint?,
         displayBounds: CGRect
     ) -> CGPoint? {
+        map(target: target, currentCursor: currentCursor, displayBounds: [displayBounds])
+    }
+
+    /// Maps within the set of active display rectangles. Using individual
+    /// rectangles preserves gaps between displays and keeps rebases on a
+    /// secondary display instead of clamping them to the calibrated primary.
+    public mutating func map(
+        target: CGPoint,
+        currentCursor: CGPoint?,
+        displayBounds: [CGRect]
+    ) -> CGPoint? {
         guard target.x.isFinite, target.y.isFinite else { return nil }
 
         if isFrozen {
@@ -87,10 +98,24 @@ public struct RelativePointerMapping: Sendable {
         return point
     }
 
-    private func clamp(_ point: CGPoint, to bounds: CGRect) -> CGPoint {
-        let x = min(max(point.x, bounds.minX), bounds.maxX)
-        let y = min(max(point.y, bounds.minY), bounds.maxY)
-        return CGPoint(x: x, y: y)
+    private func clamp(_ point: CGPoint, to bounds: [CGRect]) -> CGPoint {
+        let validBounds = bounds.filter {
+            $0.origin.x.isFinite && $0.origin.y.isFinite
+                && $0.width.isFinite && $0.height.isFinite
+                && $0.width > 0 && $0.height > 0
+        }
+        guard !validBounds.isEmpty else { return point }
+        if validBounds.contains(where: { $0.contains(point) }) { return point }
+
+        return validBounds.map { rect -> (point: CGPoint, distanceSquared: CGFloat) in
+            let candidate = CGPoint(
+                x: min(max(point.x, rect.minX), rect.maxX),
+                y: min(max(point.y, rect.minY), rect.maxY)
+            )
+            let dx = candidate.x - point.x
+            let dy = candidate.y - point.y
+            return (candidate, dx * dx + dy * dy)
+        }.min { $0.distanceSquared < $1.distanceSquared }?.point ?? point
     }
 }
 

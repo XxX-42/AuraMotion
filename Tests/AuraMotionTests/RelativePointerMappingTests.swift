@@ -56,4 +56,29 @@ final class RelativePointerMappingTests: XCTestCase {
         let movingBack = mapping.map(target: CGPoint(x: 10, y: 20), currentCursor: nil, displayBounds: bounds)
         XCTAssertEqual(movingBack, CGPoint(x: 0, y: 520))
     }
+
+    func testRelativeMappingPreservesRebaseOnAnActiveSecondaryDisplay() {
+        let displays = [
+            CGRect(x: 0, y: 0, width: 2048, height: 1280),
+            CGRect(x: 161, y: -1024, width: 1366, height: 1024)
+        ]
+        let sidecarCursor = CGPoint(x: 800, y: -770)
+        var mapping = RelativePointerMapping()
+        mapping.rebase(to: sidecarCursor)
+
+        let first = mapping.map(
+            target: CGPoint(x: 400, y: 500),
+            currentCursor: sidecarCursor,
+            displayBounds: displays
+        )
+        XCTAssertEqual(first, sidecarCursor, "The first tracked sample must preserve the visible Sidecar cursor.")
+
+        let next = mapping.map(
+            target: CGPoint(x: 410, y: 510),
+            currentCursor: first,
+            displayBounds: displays
+        )
+        XCTAssertEqual(next, CGPoint(x: 810, y: -760))
+        XCTAssertTrue(displays.contains { $0.contains(next ?? .zero) })
+    }
 }
