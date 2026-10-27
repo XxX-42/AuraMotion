@@ -11,6 +11,11 @@ final class HeadSonarDebugController: ObservableObject {
     @Published private(set) var sonarEnabled = false
     @Published private(set) var headStatus = "头部交点：关闭"
     @Published private(set) var sonarStatus = "声呐：关闭"
+    @Published private(set) var boundaryCalibration = HeadBoundaryCalibration()
+    @Published private(set) var boundaryStatus = "转头朝向屏幕边界，保持姿势并点击对应按钮"
+    private struct SavedBoundaries: Codable { let context: String; let calibration: HeadBoundaryCalibration }
+    private let boundaryKey = "headBoundaryCalibration.v1"
+    private var boundaryContext: String?
     private let marker = GazeProjectionWindow(color: .systemOrange)
     private var process: Process?
     private var timer: Timer?
@@ -24,14 +29,43 @@ final class HeadSonarDebugController: ObservableObject {
     func updateFace(_ face: FaceSample?) {
         lastFace = face
         guard headEnabled, let face, let pose = face.headPose,
-              CACurrentMediaTime() >= face.timestamp, CACurrentMediaTime() - face.timestamp < 0.5,
-              let point = HeadDirectionProjection.approximate(pose: pose, mirrored: face.isMirrored, display: CGDisplayBounds(CGMainDisplayID())) else {
+              CACurrentMediaTime() >= face.timestamp, CACurrentMediaTime() - face.timestamp < 0.5 else {
             marker.update(nil)
             headStatus = headEnabled ? "头部交点：等待有效面部姿态" : "头部交点：关闭"
             return
         }
+        guard let camera = AppEnvironment.shared.capturePipeline.calibrationCameraIdentity else {
+            marker.update(nil); headStatus = "头部交点：等待摄像头信息"; return
+        }
+        let bounds = CGDisplayBounds(CGMainDisplayID())
+        let context = "\(camera.id)|\(camera.width)x\(camera.height)|\(face.isMirrored)|\(CGMainDisplayID())|\(bounds.width)x\(bounds.height)"
+        if boundaryContext != context {
+            boundaryContext = context
+            if let data = UserDefaults.standard.data(forKey: boundaryKey), let saved = try? JSONDecoder().decode(SavedBoundaries.self, from: data), saved.context == context {
+                boundaryCalibration = saved.calibration; boundaryStatus = "已恢复本机头部边界校准"
+            } else { boundaryCalibration = HeadBoundaryCalibration(); boundaryStatus = "转头朝向屏幕边界，保持姿势并点击对应按钮" }
+        }
+        guard let point = boundaryCalibration.project(pose: pose, mirrored: face.isMirrored, display: bounds) else {
+            marker.update(nil); headStatus = "头部交点：方向不可用"; return
+        }
         marker.update(point)
         headStatus = String(format: "头部交点（近似）：%.0f, %.0f · yaw %+.1f° pitch %+.1f°", point.x, point.y, pose.yaw * 180 / .pi, pose.pitch * 180 / .pi)
+    }
+    func recordBoundary(_ edge: HeadBoundaryCalibration.Edge) {
+        guard headEnabled, let face = lastFace, let pose = face.headPose, let context = boundaryContext,
+              CACurrentMediaTime() >= face.timestamp, CACurrentMediaTime() - face.timestamp < 0.5 else {
+            boundaryStatus = "未检测到新鲜面部数据，请面向摄像头"; return
+        }
+        var updated = boundaryCalibration
+        guard updated.record(edge, yaw: pose.yaw, pitch: pose.pitch) else {
+            boundaryStatus = "与对侧角度太近，请转向该边缘后重试"; return
+        }
+        boundaryCalibration = updated
+        if let data = try? JSONEncoder().encode(SavedBoundaries(context: context, calibration: updated)) {
+            UserDefaults.standard.set(data, forKey: boundaryKey)
+            boundaryStatus = "已保存；同一方向可随时重新绑定"
+        } else { boundaryStatus = "仅本次会话生效，保存失败" }
+        updateFace(face)
     }
     func toggleSonar() { sonarEnabled ? stopSonar() : startSonar() }
     func startSonar() {

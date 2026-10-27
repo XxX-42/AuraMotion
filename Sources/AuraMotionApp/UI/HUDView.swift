@@ -121,6 +121,21 @@ public struct HUDView: View {
                 Button(headSonar.sonarEnabled ? "停止声呐" : "启动声呐") { headSonar.toggleSonar() }
                 Spacer()
             }.buttonStyle(.bordered).controlSize(.small).padding(.horizontal, 10)
+            if headSonar.headEnabled {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach([[HeadBoundaryCalibration.Edge.left, .right], [.top, .bottom]], id: \.self) { row in
+                        HStack(spacing: 5) {
+                            ForEach(row, id: \.rawValue) { edge in
+                                Button("\(headBoundaryLabel(edge))\(headSonar.boundaryCalibration.value(for: edge) == nil ? "" : " ✓")") {
+                                    headSonar.recordBoundary(edge)
+                                }
+                            }
+                        }
+                    }
+                }.buttonStyle(.bordered).controlSize(.small).padding(.horizontal, 10)
+                Text(headSonar.boundaryStatus).font(.system(size: 10)).foregroundColor(.white.opacity(0.75))
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10)
+            }
             VStack(alignment: .leading, spacing: 3) {
                 Text(headSonar.sonarStatus).foregroundColor(.cyan)
                 if headSonar.headEnabled { Text(headSonar.headStatus).foregroundColor(.orange) }
@@ -496,6 +511,9 @@ public struct HUDView: View {
     }
 
     #if DEBUG
+    private func headBoundaryLabel(_ edge: HeadBoundaryCalibration.Edge) -> String {
+        switch edge { case .left: "绑定左"; case .right: "绑定右"; case .top: "绑定上"; case .bottom: "绑定下" }
+    }
     // Face coordinates come from the video-data output, while the preview has
     // its own connection. Mirror only when their actual orientations differ.
     private var faceOverlayMirrored: Bool {
