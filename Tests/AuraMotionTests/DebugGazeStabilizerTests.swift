@@ -8,8 +8,22 @@ final class DebugGazeStabilizerTests: XCTestCase {
         let jitter = try XCTUnwrap(filter.update(CGPoint(x: 0.51, y: 0.5), timestamp: 0.1))
         XCTAssertGreaterThan(jitter.x, 0.5)
         XCTAssertLessThan(jitter.x, 0.507)
-        let moved = try XCTUnwrap(filter.update(CGPoint(x: 0.9, y: 0.5), timestamp: 0.2))
-        XCTAssertGreaterThan(moved.x, 0.75)
+        var moved = jitter
+        for frame in 1...9 {
+            moved = try XCTUnwrap(filter.update(CGPoint(x: 0.9, y: 0.5), timestamp: 0.1 + Double(frame) / 30))
+        }
+        XCTAssertGreaterThan(moved.x, 0.8)
+    }
+    func testAlternatingStationaryNoiseDoesNotCauseLargeMarkerJitter() throws {
+        var filter = DebugGazeStabilizer()
+        _ = filter.update(CGPoint(x: 0.5, y: 0.5), timestamp: 0)
+        var values: [CGFloat] = []
+        for frame in 1...120 {
+            let noisy = 0.5 + (frame.isMultiple(of: 2) ? 0.04 : -0.04)
+            let point = try XCTUnwrap(filter.update(CGPoint(x: noisy, y: 0.5), timestamp: Double(frame) / 30))
+            values.append(point.x)
+        }
+        XCTAssertLessThan(try XCTUnwrap(values.max()) - XCTUnwrap(values.min()), 0.025)
     }
     func testGapAndInvalidInputReset() throws {
         var filter = DebugGazeStabilizer()
