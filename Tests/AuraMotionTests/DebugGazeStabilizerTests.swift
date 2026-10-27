@@ -32,4 +32,16 @@ final class DebugGazeStabilizerTests: XCTestCase {
         XCTAssertNil(filter.update(CGPoint(x: CGFloat.nan, y: 0), timestamp: 2.1))
         XCTAssertEqual(filter.update(CGPoint(x: 0.2, y: 0.3), timestamp: 2.2), CGPoint(x: 0.2, y: 0.3))
     }
+    func testSustainedMovementRespondsWithoutFollowingSingleSpike() throws {
+        var filter = DebugGazeStabilizer()
+        _ = filter.update(CGPoint(x: 0.5, y: 0.5), timestamp: 0)
+        let spike = try XCTUnwrap(filter.update(CGPoint(x: 0.9, y: 0.5), timestamp: 1.0 / 30))
+        XCTAssertLessThan(spike.x, 0.57)
+        _ = filter.update(CGPoint(x: 0.5, y: 0.5), timestamp: 2.0 / 30)
+        var result = CGPoint.zero
+        for frame in 3...8 {
+            result = try XCTUnwrap(filter.update(CGPoint(x: 0.9, y: 0.5), timestamp: Double(frame) / 30))
+        }
+        XCTAssertGreaterThan(result.x, 0.82)
+    }
 }
