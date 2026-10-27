@@ -12,6 +12,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
     #if DEBUG
     private let semanticHighlight = AccessibilityTargetHighlightWindow()
     private let gazeProjection = GazeProjectionWindow()
+    private var rawProjectionPoint: CGPoint?
+    private var projectionCandidate: AccessibilityTargetSnapshot?
+    private var projectionCandidateState = false
+    private var projectionAllowed = true
     private var gazeProjectionObserver: NSObjectProtocol?
     private var semanticObserver: NSObjectProtocol?
     #endif
@@ -20,12 +24,22 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
         #if DEBUG
         gazeProjectionObserver = NotificationCenter.default.addObserver(forName: GazeDebugController.gazeProjectionNotification, object: nil, queue: .main) { [weak self] note in
             let point = note.userInfo?["point"] as? CGPoint
-            MainActor.assumeIsolated { self?.gazeProjection.update(point) }
+            let suppressed = note.userInfo?["suppressed"] as? Bool ?? false
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.rawProjectionPoint = point; self.projectionAllowed = !suppressed
+                self.refreshGazeProjection()
+            }
         }
         semanticObserver = NotificationCenter.default.addObserver(forName: AccessibilityTargetResolver.notification, object: nil, queue: .main) { [weak self] note in
             let target = note.userInfo?["target"] as? AccessibilityTargetSnapshot
             let state = note.userInfo?["state"] as? String ?? ""
-            MainActor.assumeIsolated { self?.semanticHighlight.update(target, state: state) }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.semanticHighlight.update(target, state: state)
+                self.projectionCandidate = target; self.projectionCandidateState = state.hasPrefix("candidate")
+                self.refreshGazeProjection()
+            }
         }
         #endif
         // 1. Create Floating HUD Panel
@@ -82,6 +96,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
         ExperimentalGazeEstimationWorker.shared.setEnabled(true)
         #endif
     }
+
+    #if DEBUG
+    private func refreshGazeProjection() {
+        let point = GazeProjectionLink.position(gaze: rawProjectionPoint, candidate: projectionCandidate,
+                                                isCandidate: projectionCandidateState, enabled: projectionAllowed)
+        gazeProjection.update(point)
+    }
+    #endif
 
     public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         statusItemController?.showSettingsWindow()

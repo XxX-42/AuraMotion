@@ -32,6 +32,8 @@ final class GazeDebugController: ObservableObject {
     private var checkedContext: AngularCalibrationContext?
     private let angularStore = AngularCalibrationStore()
     private var externalCalibrating = false
+    private var projectionExplicitlyDisabled = false
+    private var projectionSuppressedForCalibration = false
     private var externalStabilizer = DebugGazeStabilizer()
     @Published var semanticInputStatus = "等待 CNN 校准与预测"
     private var externalBounds: CGRect?
@@ -103,9 +105,14 @@ final class GazeDebugController: ObservableObject {
         updateSemantic(screenPoint, time: time)
     }
     static let gazeProjectionNotification = Notification.Name("AuraMotionGazeProjection")
+    func setProjectionEnabled(_ enabled: Bool) {
+        projectionExplicitlyDisabled = !enabled
+        if !enabled { publishProjection(nil) }
+    }
     private func publishProjection(_ point: CGPoint?) {
-        var info: [String: Any] = [:]
-        if let point { info["point"] = point }
+        let suppressed = projectionExplicitlyDisabled || projectionSuppressedForCalibration
+        var info: [String: Any] = ["suppressed": suppressed]
+        if let point, !suppressed { info["point"] = point }
         NotificationCenter.default.post(name: Self.gazeProjectionNotification, object: nil, userInfo: info)
     }
     private func updateSemantic(_ point: CGPoint?, time: TimeInterval, reason: String? = nil) {
@@ -196,7 +203,7 @@ final class GazeDebugController: ObservableObject {
         calibration = model; status = "校准完成，点击目标检查预测"
     }
     func show() {
-        publishProjection(nil)
+        projectionSuppressedForCalibration = true; publishProjection(nil)
         AccessibilityTargetResolver.shared.setSuspended(true)
         // Let an already-running, bounded AX hit test return before the
         // full-screen SwiftUI window becomes visible to the AX server.
@@ -219,7 +226,10 @@ final class GazeDebugController: ObservableObject {
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    private func close() { cancel(); window?.orderOut(nil); window = nil; AccessibilityTargetResolver.shared.setSuspended(false) }
+    private func close() {
+        cancel(); window?.orderOut(nil); window = nil; projectionSuppressedForCalibration = false
+        AccessibilityTargetResolver.shared.setSuspended(false)
+    }
 }
 
 private struct GazeCalibrationView: View {

@@ -137,6 +137,7 @@ public struct HUDView: View {
             HStack {
                 Button {
                     showExternalGaze.toggle()
+                    GazeDebugController.shared.setProjectionEnabled(showExternalGaze)
                     ExperimentalGazeEstimationWorker.shared.setEnabled(showExternalGaze)
                     externalGazeStatus = showExternalGaze ? "启动中" : "未开启"
                     externalLeft = nil; externalRight = nil; externalLastUpdate = nil; externalFPS = nil
