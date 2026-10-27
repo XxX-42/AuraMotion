@@ -17,6 +17,7 @@ final class AccessibilityTargetScorerTests: XCTestCase {
         let point = CGPoint(x: 175, y: 110)
         XCTAssertTrue(AccessibilityTargetScorer.visualRetentionFrame(frame).contains(point))
         XCTAssertNil(AccessibilityTargetScorer.score(target, gaze: point, current: false))
+        XCTAssertNotNil(AccessibilityTargetScorer.score(target, gaze: point, current: true))
     }
     func testCloseSliderBeatsDistantButton() throws {
         let slider = AccessibilityTargetSnapshot(role: "AXSlider", frame: CGRect(x: 100,y: 100,width: 40,height: 20), title: nil, supportsPress: false)

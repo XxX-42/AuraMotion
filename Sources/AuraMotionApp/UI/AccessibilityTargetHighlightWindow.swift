@@ -26,7 +26,7 @@ final class AccessibilityTargetHighlightWindow {
                                  y: screen.frame.maxY - (expanded.maxY - quartz.minY),
                                  width: expanded.width, height: expanded.height)
         view.visual = NSRect(x: frame.minX-expanded.minX, y: expanded.maxY-frame.maxY, width: frame.width, height: frame.height)
-        view.locked = state == "locked"; view.candidate = state.hasPrefix("candidate"); view.needsDisplay = true
+        view.locked = state.hasPrefix("locked"); view.candidate = state.hasPrefix("candidate") || state.hasPrefix("retained"); view.needsDisplay = true
         panel.setFrame(appKitFrame, display: true); panel.orderFrontRegardless()
     }
 }

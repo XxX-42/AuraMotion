@@ -39,7 +39,7 @@ public enum AccessibilityTargetScorer {
     }
     public static func score(_ target: AccessibilityTargetSnapshot, gaze: CGPoint, current: Bool, config: AccessibilityTargetScoringConfiguration = .init()) -> Double? {
         let frame = target.frame
-        guard effectiveFrame(frame, config: config).contains(gaze) else { return nil }
+        guard effectiveFrame(frame, config: config).contains(gaze) || (current && visualRetentionFrame(frame, config: config).contains(gaze)) else { return nil }
         let center = hypot(gaze.x - frame.midX, gaze.y - frame.midY)
         let priority = ["AXButton", "AXLink", "AXCheckBox", "AXMenuItem"].contains(target.role) ? config.roleBonus : 0
         return config.insideExpandedBonus + (frame.contains(gaze) ? config.insideFrameBonus : 0)

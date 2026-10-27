@@ -37,7 +37,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.semanticHighlight.update(target, state: state)
-                self.projectionCandidate = target; self.projectionCandidateState = state.hasPrefix("candidate")
+                self.projectionCandidate = target; self.projectionCandidateState = GazeProjectionLink.isTargetState(state)
                 self.refreshGazeProjection()
             }
         }
@@ -100,7 +100,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
     #if DEBUG
     private func refreshGazeProjection() {
         let point = GazeProjectionLink.position(gaze: rawProjectionPoint, candidate: projectionCandidate,
-                                                isCandidate: projectionCandidateState, enabled: projectionAllowed)
+                                                hasSemanticTarget: projectionCandidateState, enabled: projectionAllowed)
         gazeProjection.update(point)
     }
     #endif
