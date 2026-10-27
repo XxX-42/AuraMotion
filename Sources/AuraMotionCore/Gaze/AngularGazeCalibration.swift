@@ -13,14 +13,14 @@ public struct AngularGazeFrame {
         self.pitch = pitch; self.yaw = yaw; self.eye = eye; self.rotation = rotation
     }
 }
-public struct DebugScreenGeometry {
+public struct DebugScreenGeometry: Codable, Equatable, Sendable {
     public let width: Double, height: Double, offsetX: Double, offsetY: Double
     public init(width: Double, height: Double, offsetX: Double, offsetY: Double) {
         self.width = width; self.height = height; self.offsetX = offsetX; self.offsetY = offsetY
     }
     var valid: Bool { [width,height,offsetX,offsetY].allSatisfy(\.isFinite) && width > 0 && height > 0 }
 }
-public struct AngularGazeCalibration {
+public struct AngularGazeCalibration: Codable, Sendable {
     public struct Sample {
         public let frame: AngularGazeFrame
         /// Top-left normalized display coordinate.
@@ -88,9 +88,12 @@ public struct AngularGazeCalibration {
         guard let pw = solve(bp), let yw = solve(by) else { throw Error.invalidData }
         return Self(mean: mean, scale: scale, pitchWeights: pw, yawWeights: yw, geometry: geometry)
     }
+    public var isValid: Bool {
+        geometry.valid && [mean.x,mean.y,scale.x,scale.y,pitchWeights.x,pitchWeights.y,pitchWeights.z,yawWeights.x,yawWeights.y,yawWeights.z].allSatisfy(\.isFinite) && scale.x > 0 && scale.y > 0
+    }
     /// Returns an unclamped top-left normalized intersection; nil for invalid rays.
     public func project(_ frame: AngularGazeFrame) -> CGPoint? {
-        guard Self.valid(frame), geometry.valid else { return nil }
+        guard Self.valid(frame), isValid else { return nil }
         let row = SIMD3(1, (frame.pitch-mean.x)/scale.x, (frame.yaw-mean.y)/scale.y)
         guard abs(row.y) <= 8, abs(row.z) <= 8 else { return nil }
         let pitch = simd_dot(row,pitchWeights), yaw = simd_dot(row,yawWeights)

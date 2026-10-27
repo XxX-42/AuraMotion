@@ -35,6 +35,32 @@ final class AngularGazeCalibrationTests: XCTestCase {
             XCTAssertEqual(a.y, b.y, accuracy: 1e-8)
         }
     }
+    func testCalibrationPersistenceRequiresMatchingInputs() throws {
+        let suite = "AuraMotion.AngularStoreTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = try AngularGazeCalibration.fit(GazeCalibration.nineTargets.map(sample), geometry: geometry)
+        func context(signature: String = "modelA", camera: String = "cameraA", mirrored: Bool = false,
+                     width: Int = 640, displayID: UInt32 = 1, screenWidth: Double = 1000,
+                     geometry: DebugScreenGeometry? = nil) -> AngularCalibrationContext {
+            AngularCalibrationContext(modelSignature: signature, cameraID: camera, width: width, height: 480, mirrored: mirrored,
+                                      displayID: displayID, displayX: 0, displayY: 0, displayWidth: screenWidth,
+                                      displayHeight: 800, geometry: geometry ?? self.geometry)
+        }
+        let first = AngularCalibrationStore(defaults: defaults)
+        XCTAssertTrue(first.save(model, context: context()))
+        let restored = try XCTUnwrap(AngularCalibrationStore(defaults: defaults).load(matching: context()))
+        let frame = sample(GazeCalibration.nineTargets[0]).frame
+        let a = try XCTUnwrap(model.project(frame)), b = try XCTUnwrap(restored.project(frame))
+        XCTAssertEqual(a.x, b.x, accuracy: 1e-10); XCTAssertEqual(a.y, b.y, accuracy: 1e-10)
+        XCTAssertNil(first.load(matching: context(signature: "newModel")))
+        XCTAssertNil(first.load(matching: context(camera: "otherCamera")))
+        XCTAssertNil(first.load(matching: context(mirrored: true)))
+        XCTAssertNil(first.load(matching: context(width: 1280)))
+        XCTAssertNil(first.load(matching: context(displayID: 2)))
+        XCTAssertNil(first.load(matching: context(screenWidth: 1200)))
+        XCTAssertNil(first.load(matching: context(geometry: DebugScreenGeometry(width: 300, height: 190, offsetX: 0, offsetY: 10))))
+    }
     func testInvalidAndInsufficientVariationRejected() throws {
         let flat = GazeCalibration.nineTargets.map { AngularGazeCalibration.Sample(frame: AngularGazeFrame(pitch: 0, yaw: 0, eye: SIMD3(0, 0, 600), rotation: rotation), target: $0) }
         XCTAssertThrowsError(try AngularGazeCalibration.fit(flat, geometry: geometry))

@@ -77,6 +77,7 @@ public final class ExperimentalGazeEstimationWorker: @unchecked Sendable {
         let hostTime: Double
         let phase: String
         let modelLoaded: Bool
+        let modelSignature: String?
         let leftPatch: String?
         let rightPatch: String?
         let gaze: [Double]?
@@ -162,6 +163,7 @@ public final class ExperimentalGazeEstimationWorker: @unchecked Sendable {
                 info["frameID"] = response.frameID
                 info["hostTime"] = response.hostTime
                 info["modelLoaded"] = response.modelLoaded
+                if let signature = response.modelSignature { info["modelSignature"] = signature }
                 info["reason"] = response.reason
                 if let l = response.leftPatch { info["leftPatch"] = l }
                 if let r = response.rightPatch { info["rightPatch"] = r }

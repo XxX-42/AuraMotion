@@ -36,6 +36,7 @@ public final class CapturePipeline: NSObject, AVCaptureVideoDataOutputSampleBuff
     private var snapshotState: CaptureLifecycleState = .idle
     private let stateLock = NSLock()
     private var videoAspectRatio: Double = 16.0 / 9.0
+    private var cameraIdentitySnapshot: (id: String, width: Int, height: Int)?
     private var videoDataMirrored = false
     // Confined to captureQueue; IDs remain monotonic across capture restarts.
     private var nextFrameID: UInt64 = 0
@@ -68,6 +69,11 @@ public final class CapturePipeline: NSObject, AVCaptureVideoDataOutputSampleBuff
         stateLock.lock()
         defer { stateLock.unlock() }
         return videoAspectRatio
+    }
+
+    /// Camera identity and format captured atomically for debug calibration compatibility.
+    public var calibrationCameraIdentity: (id: String, width: Int, height: Int)? {
+        stateLock.lock(); defer { stateLock.unlock() }; return cameraIdentitySnapshot
     }
 
     public var isVideoDataMirrored: Bool {
@@ -218,6 +224,9 @@ public final class CapturePipeline: NSObject, AVCaptureVideoDataOutputSampleBuff
 
         activeDevice = selection.device
         let dimensions = CMVideoFormatDescriptionGetDimensions(selection.format.formatDescription)
+        stateLock.lock()
+        cameraIdentitySnapshot = (selection.device.uniqueID, Int(dimensions.width), Int(dimensions.height))
+        stateLock.unlock()
         if dimensions.width > 0 && dimensions.height > 0 {
             stateLock.lock()
             videoAspectRatio = Double(dimensions.width) / Double(dimensions.height)

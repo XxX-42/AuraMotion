@@ -13,6 +13,8 @@ public struct AccessibilityTargetSnapshot: Sendable, Equatable {
 public struct AccessibilityTargetScoringConfiguration: Sendable {
     public var horizontalPadding: CGFloat = 40
     public var verticalPadding: CGFloat = 30
+    public var visualRetentionExtraX: CGFloat = 40
+    public var visualRetentionExtraY: CGFloat = 30
     public var insideExpandedBonus: Double = 100
     public var insideFrameBonus: Double = 50
     public var centerDistanceWeight: Double = 0.12
@@ -25,6 +27,10 @@ public struct AccessibilityTargetScoringConfiguration: Sendable {
 public enum AccessibilityTargetScorer {
     public static func effectiveFrame(_ frame: CGRect, config: AccessibilityTargetScoringConfiguration = .init()) -> CGRect {
         frame.insetBy(dx: -config.horizontalPadding, dy: -config.verticalPadding)
+    }
+    /// Wider visual grace area only; never used to qualify a target for action.
+    public static func visualRetentionFrame(_ frame: CGRect, config: AccessibilityTargetScoringConfiguration = .init()) -> CGRect {
+        effectiveFrame(frame, config: config).insetBy(dx: -config.visualRetentionExtraX, dy: -config.visualRetentionExtraY)
     }
     public static func frameDistance(_ frame: CGRect, point: CGPoint) -> CGFloat {
         let x = max(frame.minX - point.x, 0, point.x - frame.maxX)

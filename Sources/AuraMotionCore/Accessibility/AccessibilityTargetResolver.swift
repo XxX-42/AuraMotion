@@ -18,10 +18,13 @@ public final class AccessibilityTargetResolver: @unchecked Sendable {
     private var enabled = false, resolving = false, suspended = false, generation: UInt64 = 0
     private var excludedFrames: [CGRect] = []
     private var lastQuery: TimeInterval = 0
+    private var lastLoggedState = ""
     private var focus: Target?, locked: Target?, lastVisible: Target?
     private var stabilizer = TargetFocusStabilizer<Identity>()
     private var contact = false, acted = false, suppressUntilRelease = false
     private let config = AccessibilityTargetScoringConfiguration()
+    /// Visual-only grace; stale targets are never actionable.
+    private let visibleGrace: TimeInterval = 0.8
     private let roles = Set(["AXButton", "AXLink", "AXCheckBox", "AXTextField", "AXSlider", "AXMenuItem"])
     private let pressRoles = Set(["AXButton", "AXLink", "AXCheckBox", "AXMenuItem"])
     public var isEnabled: Bool { lock.lock(); defer { lock.unlock() }; return enabled }
@@ -42,7 +45,7 @@ public final class AccessibilityTargetResolver: @unchecked Sendable {
         if value { publish(nil, state: "校准窗口开启") }
     }
     /// Resolve a fresh, smoothed gaze point before stabilizing target identity.
-    public func update(_ gazePoint: CGPoint?, timestamp: TimeInterval) {
+    public func update(_ gazePoint: CGPoint?, timestamp: TimeInterval, diagnosticReason: String? = nil) {
         lock.lock()
         guard enabled && !suspended else { lock.unlock(); return }
         guard AXIsProcessTrusted() else { focus = nil; locked = nil; lastVisible = nil; stabilizer.reset(); lock.unlock(); publish(nil, state: "Permission Missing"); return }
@@ -52,22 +55,26 @@ public final class AccessibilityTargetResolver: @unchecked Sendable {
             focus = nil; generation &+= 1
             let now = CACurrentMediaTime()
             let preserved: Target?
-            if case .candidate = stabilizer.temporarilyMissing(timestamp: now), let visible = lastVisible,
-               now >= visible.time, now - visible.time <= 0.2 { preserved = visible }
+            _ = stabilizer.temporarilyMissing(timestamp: now)
+            if let visible = lastVisible, now >= visible.time, now - visible.time <= visibleGrace { preserved = visible }
             else { lastVisible = nil; preserved = nil }
-            lock.unlock(); publish(preserved, state: preserved == nil ? "等待有效注视" : "candidate · 短暂保留"); return
+            lock.unlock(); publish(preserved, state: preserved == nil ? (diagnosticReason ?? "等待有效注视") : "candidate · 短暂保留（\(diagnosticReason ?? "等待有效注视" )）"); return
         }
         // Never allow a fresh pinch to use a previously focused control when
         // the latest gaze has already left its expanded hit area.
         var invalidated = false
+        var held: Target?
         if !contact, let current = focus, !AccessibilityTargetScorer.effectiveFrame(current.snapshot.frame, config: config).contains(gaze) {
-            focus = nil; lastVisible = nil; stabilizer.reset(); generation &+= 1; invalidated = true
+            focus = nil; stabilizer.reset(); generation &+= 1; invalidated = true
+            if timestamp >= current.time, timestamp - current.time <= visibleGrace,
+               AccessibilityTargetScorer.visualRetentionFrame(current.snapshot.frame, config: config).contains(gaze) { held = current }
+            else { lastVisible = nil }
         }
         guard !contact, !resolving, CACurrentMediaTime() - lastQuery >= 0.1 else {
-            lock.unlock(); if invalidated { publish(nil, state: "等待目标") }; return
+            lock.unlock(); if invalidated { publish(held, state: held == nil ? "视线离开目标" : "candidate · 短暂保留（离开命中区）") }; return
         }
         resolving = true; lastQuery = CACurrentMediaTime(); let token = generation; let previous = focus ?? lastVisible; let excluded = excludedFrames; lock.unlock()
-        if invalidated { publish(nil, state: "等待目标") }
+        if invalidated { publish(held, state: held == nil ? "视线离开目标" : "candidate · 短暂保留（离开命中区）") }
         queue.async { [self] in
             let candidates = discover(gaze: gaze, now: timestamp, previous: previous, excluded: excluded, token: token)
             lock.lock(); resolving = false
@@ -85,12 +92,12 @@ public final class AccessibilityTargetResolver: @unchecked Sendable {
             } else {
                 focus = nil
                 let kept: Target?
-                if case .candidate = stabilizer.temporarilyMissing(timestamp: timestamp), let previous,
-                   timestamp >= previous.time, timestamp - previous.time <= 0.2,
-                   AccessibilityTargetScorer.effectiveFrame(previous.snapshot.frame, config: config).contains(gaze) {
+                _ = stabilizer.temporarilyMissing(timestamp: timestamp)
+                if let previous, timestamp >= previous.time, timestamp - previous.time <= visibleGrace,
+                   AccessibilityTargetScorer.visualRetentionFrame(previous.snapshot.frame, config: config).contains(gaze) {
                     kept = previous
                 } else { lastVisible = nil; kept = nil }
-                lock.unlock(); publish(kept, state: kept == nil ? "无目标" : "candidate · 短暂保留")
+                lock.unlock(); publish(kept, state: kept == nil ? "查询未命中" : "candidate · 短暂保留（查询未命中）")
             }
         }
     }
@@ -103,7 +110,7 @@ public final class AccessibilityTargetResolver: @unchecked Sendable {
     public func endPinch() {
         lock.lock(); guard contact else { lock.unlock(); return }
         contact = false; locked = nil; focus = nil; lastVisible = nil; stabilizer.reset(); acted = false; suppressUntilRelease = false; lock.unlock()
-        publish(nil, state: "等待目标")
+        publish(nil, state: "捏合结束")
     }
     /// Called only for a confirmed pinch; semantic mode never falls back to mouse click.
     public func confirmPinch(allowed: @escaping @Sendable () -> Bool) {
@@ -166,6 +173,10 @@ public final class AccessibilityTargetResolver: @unchecked Sendable {
         return AccessibilityTargetSnapshot(role: role, frame: CGRect(origin: origin, size: size), title: attribute(kAXTitleAttribute as CFString) as? String, supportsPress: supports)
     }
     private func publish(_ target: Target?, state: String) {
+        // Local debug transition log only: no titles, target IDs, gaze
+        // coordinates, screenshots, or camera frames are persisted.
+        lock.lock(); let changed = lastLoggedState != state; lastLoggedState = state; lock.unlock()
+        if changed { NSLog("AX targeting state: %@ (target %@)", state, target == nil ? "absent" : "present") }
         var info: [String: Any] = ["state": state]
         if let target { info["target"] = target.snapshot; info["score"] = target.score; info["gaze"] = target.gaze; info["distance"] = AccessibilityTargetScorer.frameDistance(target.snapshot.frame, point: target.gaze) }
         DispatchQueue.main.async { NotificationCenter.default.post(name: Self.notification, object: nil, userInfo: info) }

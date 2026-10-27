@@ -28,13 +28,17 @@ final class GazeDebugController: ObservableObject {
     @Published var angularRowReport = ""
     @Published var externalStatus = "CNN：请开启 GazeEstimation · Mac 并等待模型就绪"
     private var externalCalibration: AngularGazeCalibration?
+    private var externalContext: AngularCalibrationContext?
+    private var checkedContext: AngularCalibrationContext?
+    private let angularStore = AngularCalibrationStore()
+    private var externalCalibrating = false
     private var externalStabilizer = DebugGazeStabilizer()
     @Published var semanticInputStatus = "等待 CNN 校准与预测"
     private var externalBounds: CGRect?
     var lastExternal: (frame: UInt64, time: TimeInterval, point: CGPoint)?
     @Published var rawAnglesText = "Raw CNN：等待有效角度"
     var lastAngles: (frame: UInt64, time: TimeInterval, pitch: Double, yaw: Double)?
-    var lastAngular: (frameID: UInt64, time: TimeInterval, frame: AngularGazeFrame, geometry: DebugScreenGeometry)?
+    var lastAngular: (frameID: UInt64, time: TimeInterval, frame: AngularGazeFrame, geometry: DebugScreenGeometry, context: AngularCalibrationContext)?
 
     func receiveExternal(_ note: Notification) {
         if let a = note.userInfo?["angles"] as? [Double], a.count == 2,
@@ -49,6 +53,8 @@ final class GazeDebugController: ObservableObject {
               let eye = note.userInfo?["eyeCenter"] as? [Double], eye.count == 3,
               let rotation = note.userInfo?["eyeRotation"] as? [Double], rotation.count == 9,
               let screen = note.userInfo?["screenGeometry"] as? [Double], screen.count == 4,
+              let modelSignature = note.userInfo?["modelSignature"] as? String, !modelSignature.isEmpty,
+              let camera = AppEnvironment.shared.capturePipeline.calibrationCameraIdentity,
               let frameID = note.userInfo?["frameID"] as? UInt64,
               let time = note.userInfo?["hostTime"] as? Double,
               angles.allSatisfy(\.isFinite), eye.allSatisfy(\.isFinite), rotation.allSatisfy(\.isFinite), screen.allSatisfy(\.isFinite),
@@ -57,8 +63,27 @@ final class GazeDebugController: ObservableObject {
         }
         let frame = AngularGazeFrame(pitch: angles[0], yaw: angles[1], eye: SIMD3(eye[0],eye[1],eye[2]), rotation: rotation)
         let geometry = DebugScreenGeometry(width: screen[0], height: screen[1], offsetX: screen[2], offsetY: screen[3])
-        lastAngular = (frameID, time, frame, geometry)
-        guard let calibration = externalCalibration, let bounds = externalBounds else {
+        let boundsNow = CGDisplayBounds(CGMainDisplayID())
+        let context = AngularCalibrationContext(modelSignature: modelSignature, cameraID: camera.id,
+            width: camera.width, height: camera.height, mirrored: AppEnvironment.shared.capturePipeline.isVideoDataMirrored,
+            displayID: CGMainDisplayID(), displayX: boundsNow.minX, displayY: boundsNow.minY,
+            displayWidth: boundsNow.width, displayHeight: boundsNow.height, geometry: geometry)
+        guard context.isValid else {
+            lastAngular = nil; externalPoint = nil; externalStabilizer.reset()
+            updateSemantic(nil, time: time, reason: "摄像头或屏幕信息不可用"); return
+        }
+        lastAngular = (frameID, time, frame, geometry, context)
+        if !externalCalibrating && checkedContext != context {
+            checkedContext = context; externalContext = nil; externalBounds = nil
+            externalStabilizer.reset(); externalPoint = nil
+            if let saved = angularStore.load(matching: context) {
+                externalCalibration = saved; externalContext = context; externalBounds = boundsNow
+                externalStatus = "CNN 角度校准已从本机恢复；屏幕尺寸为估计值"
+            } else {
+                externalCalibration = nil; externalStatus = "CNN 校准未匹配当前模型、摄像头或屏幕，请校准"
+            }
+        }
+        guard let calibration = externalCalibration, externalContext == context, let bounds = externalBounds else {
             externalPoint = nil; projectionStatus = "射线交点：尚未校准"; updateSemantic(nil, time: time, reason: "CNN 角度未校准"); return
         }
         guard bounds == CGDisplayBounds(CGMainDisplayID()) else {
@@ -81,13 +106,18 @@ final class GazeDebugController: ObservableObject {
         guard AccessibilityTargetResolver.shared.isEnabled else { semanticInputStatus = "OFF"; return }
         if let point { semanticInputStatus = String(format: "平滑注视 %.0f, %.0f", point.x, point.y) }
         else { semanticInputStatus = reason ?? "等待有效 CNN 帧" }
-        AccessibilityTargetResolver.shared.update(point, timestamp: time)
+        let diagnostic: String?
+        if point != nil { diagnostic = nil }
+        else if reason?.hasPrefix("射线在屏幕外") == true { diagnostic = "射线在屏幕外" }
+        else { diagnostic = reason }
+        AccessibilityTargetResolver.shared.update(point, timestamp: time, diagnosticReason: diagnostic)
     }
     func expireExternal() { externalPoint = nil; lastExternal = nil; lastAngular = nil; externalStabilizer.reset(); updateSemantic(nil, time: CACurrentMediaTime()) }
     func beginExternal() {
-        externalCalibration = nil; externalPoint = nil; angularRowReport = ""; externalStabilizer.reset(); externalStatus = "CNN 角度九点校准中"
+        externalCalibrating = true; externalCalibration = nil; externalContext = nil; checkedContext = nil
+        externalPoint = nil; angularRowReport = ""; externalStabilizer.reset(); externalStatus = "CNN 角度九点校准中"
     }
-    func finishExternal(_ samples: [AngularGazeCalibration.Sample], geometry: DebugScreenGeometry, bounds: CGRect) throws {
+    func finishExternal(_ samples: [AngularGazeCalibration.Sample], geometry: DebugScreenGeometry, context: AngularCalibrationContext, bounds: CGRect) throws {
         externalStabilizer.reset()
         let model = try AngularGazeCalibration.fit(samples, geometry: geometry)
         let errors = samples.compactMap { sample -> (Double, Double)? in
@@ -104,8 +134,9 @@ final class GazeDebugController: ObservableObject {
             return String(format: "目标 %.2f → %.2f (%d帧)", targetY, values.reduce(0, +) / Double(values.count), values.count)
         }
         angularRowReport = "校准样本上下行（拟合内）：" + rows.joined(separator: "；")
-        externalCalibration = model; externalBounds = bounds
-        externalStatus = String(format: "CNN 角度校准完成；拟合误差 X %.1f%% Y %.1f%%（非独立验证）；屏幕 %.0f×%.0f mm 为估计值", 100*x, 100*y, geometry.width, geometry.height)
+        externalCalibration = model; externalBounds = bounds; externalContext = context; checkedContext = context; externalCalibrating = false
+        let saved = angularStore.save(model, context: context)
+        externalStatus = String(format: "CNN 角度校准完成（%@）；拟合误差 X %.1f%% Y %.1f%%（非独立验证）；屏幕 %.0f×%.0f mm 为估计值", saved ? "已保存本机" : "仅当前会话，保存失败", 100*x, 100*y, geometry.width, geometry.height)
     }
     @Published var gazeDiagnostics = "Iris Base: —   Head correction: —   Final: —"
     @Published var fixation: FixationState = .unavailable
@@ -149,6 +180,7 @@ final class GazeDebugController: ObservableObject {
         estimate = nil; fixation = detector.update(nil); spatial.clear(); status = "正在校准"
     }
     func cancel() {
+        if externalCalibrating { externalCalibrating = false; checkedContext = nil }
         if calibration == nil { status = "请先进行九点校准" }
     }
     func finish(_ samples: [GazeCalibrationPoint], mirroring: Bool, bounds: CGRect) throws {
@@ -179,7 +211,7 @@ final class GazeDebugController: ObservableObject {
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    private func close() { window?.orderOut(nil); window = nil; AccessibilityTargetResolver.shared.setSuspended(false) }
+    private func close() { cancel(); window?.orderOut(nil); window = nil; AccessibilityTargetResolver.shared.setSuspended(false) }
 }
 
 private struct GazeCalibrationView: View {
@@ -198,6 +230,7 @@ private struct GazeCalibrationView: View {
     @State private var externalBucket: [AngularGazeFrame] = []
     @State private var angularSamples: [AngularGazeCalibration.Sample] = []
     @State private var angularGeometry: DebugScreenGeometry?
+    @State private var angularContext: AngularCalibrationContext?
     @State private var benchmark = IrisSeparabilityBenchmark()
     @State private var benchmarkTargetHostTime: TimeInterval = 0
     @State private var benchmarkReport: String?
@@ -304,7 +337,7 @@ private struct GazeCalibrationView: View {
     private func startExternal() {
         runningDirection = false; directionReport = nil
         controller.beginExternal(); runningBenchmark = false; runningExternal = true
-        bounds = CGDisplayBounds(CGMainDisplayID()); samples = []; angularSamples = []; angularGeometry = nil; externalBucket = []
+        bounds = CGDisplayBounds(CGMainDisplayID()); samples = []; angularSamples = []; angularGeometry = nil; angularContext = nil; externalBucket = []
         index = 0; lastFrame = nil; pointStart = Date(); active = true
         message = "CNN 角度校准 1/9：请注视黄色圆点；等待模型与摄像头就绪。"
     }
@@ -385,6 +418,11 @@ private struct GazeCalibrationView: View {
         if runningExternal {
             if elapsed >= 1.0, let raw = controller.lastAngular, raw.frameID != lastFrame,
                CACurrentMediaTime() >= raw.time, CACurrentMediaTime() - raw.time < 0.5 {
+                if let original = angularContext, original != raw.context {
+                    active = false; runningExternal = false; controller.cancel()
+                    message = "模型、摄像头或屏幕发生变化，已取消校准；请重新开始。"; return
+                }
+                angularContext = raw.context
                 lastFrame = raw.frameID; externalBucket.append(raw.frame); angularGeometry = raw.geometry
             }
             guard elapsed >= 2.6 else { return }
@@ -397,12 +435,12 @@ private struct GazeCalibrationView: View {
             if index == 9 {
                 active = false; runningExternal = false; index = 4
                 do {
-                    guard let geometry = angularGeometry else { throw AngularGazeCalibration.Error.invalidData }
-                    try controller.finishExternal(angularSamples, geometry: geometry, bounds: bounds)
+                    guard let geometry = angularGeometry, let context = angularContext else { throw AngularGazeCalibration.Error.invalidData }
+                    try controller.finishExternal(angularSamples, geometry: geometry, context: context, bounds: bounds)
                     message = "角度校准完成：绿色 × 为射线与屏幕交点；注视九点检查。"
                 } catch {
                     message = "CNN 角度校准失败：角度变化不足或数据无效，请重新校准。"
-                    controller.externalStatus = "CNN 角度校准失败"
+                    controller.cancel(); controller.externalStatus = "CNN 角度校准失败"
                 }
             } else { message = "CNN 角度校准 \(index + 1)/9：请注视黄色圆点。" }
             return

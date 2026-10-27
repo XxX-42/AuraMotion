@@ -6,6 +6,7 @@ opened here; the caller supplies bounded camera frames and capture timestamps.
 """
 import base64
 import json
+import hashlib
 import os
 from pathlib import Path
 import struct
@@ -50,6 +51,7 @@ def checkpoint():
 def main():
     cfg = load_config()
     pipeline = None
+    model_signature = None
     last_check = 0.0
     last_timestamp = 0
     with LandmarkDetector(cfg) as detector:
@@ -75,12 +77,21 @@ def main():
                         from src.pipeline import GazePipeline
                         # Small single-frame CNN: avoid excessive CPU thread overhead.
                         torch.set_num_threads(1)
-                        pipeline = GazePipeline(model, mode='geometric', cfg=cfg, smooth_angles=False)
+                        loaded_pipeline = GazePipeline(model, mode='geometric', cfg=cfg, smooth_angles=False)
+                        digest = hashlib.sha256()
+                        for path in (model, repo / 'config.yaml', repo / 'models/face_landmarker.task', repo / 'src/normalize.py', repo / 'src/headpose.py', repo / 'src/intrinsics.py', repo / 'src/landmarks.py', repo / 'src/geometry.py', repo / 'src/mpiigaze.py', repo / 'src/model.py', repo / 'src/pipeline.py'):
+                            with path.open('rb') as source:
+                                for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                                    digest.update(chunk)
+                        import mediapipe
+                        digest.update(str(mediapipe.__version__).encode('utf-8'))
+                        model_signature = digest.hexdigest()
+                        pipeline = loaded_pipeline
                     except Exception as error:
                         print(f'checkpoint load failed: {error}', file=sys.stderr, flush=True)
             obs = detector.detect(bgr, timestamp)
             response = {'frameID': frame_id, 'hostTime': host_time, 'phase': 'no_face',
-                        'modelLoaded': pipeline is not None, 'leftPatch': None,
+                        'modelLoaded': pipeline is not None, 'modelSignature': model_signature, 'leftPatch': None,
                         'rightPatch': None, 'gaze': None, 'angles': None, 'eyeCenter': None, 'eyeRotation': None, 'screenGeometry': None, 'reason': obs.reason or ''}
             if obs.ok:
                 normalized = None
