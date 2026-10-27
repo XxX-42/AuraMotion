@@ -6,6 +6,12 @@ import QuartzCore
 import AuraMotionCore
 
 @MainActor
+private final class GazeCalibrationWindowDelegate: NSObject, NSWindowDelegate {
+    var onClose: (() -> Void)?
+    func windowWillClose(_ notification: Notification) { onClose?() }
+}
+
+@MainActor
 final class GazeDebugController: ObservableObject {
     static let shared = GazeDebugController()
     @Published var calibration: GazeCalibration?
@@ -23,7 +29,6 @@ final class GazeDebugController: ObservableObject {
     @Published var externalStatus = "CNN：请开启 GazeEstimation · Mac 并等待模型就绪"
     private var externalCalibration: AngularGazeCalibration?
     private var externalStabilizer = DebugGazeStabilizer()
-    private var semanticFixation = FixationDetector()
     @Published var semanticInputStatus = "等待 CNN 校准与预测"
     private var externalBounds: CGRect?
     var lastExternal: (frame: UInt64, time: TimeInterval, point: CGPoint)?
@@ -48,33 +53,35 @@ final class GazeDebugController: ObservableObject {
               let time = note.userInfo?["hostTime"] as? Double,
               angles.allSatisfy(\.isFinite), eye.allSatisfy(\.isFinite), rotation.allSatisfy(\.isFinite), screen.allSatisfy(\.isFinite),
               CACurrentMediaTime() >= time, CACurrentMediaTime() - time < 0.5 else {
-            lastAngular = nil; lastExternal = nil; externalPoint = nil; projectionStatus = "射线交点：等待有效输入"; externalStabilizer.reset(); updateSemantic(nil, time: CACurrentMediaTime()); return
+            lastAngular = nil; lastExternal = nil; externalPoint = nil; projectionStatus = "射线交点：等待有效输入"; externalStabilizer.reset(); updateSemantic(nil, time: CACurrentMediaTime(), reason: "眼部帧无效或超时"); return
         }
         let frame = AngularGazeFrame(pitch: angles[0], yaw: angles[1], eye: SIMD3(eye[0],eye[1],eye[2]), rotation: rotation)
         let geometry = DebugScreenGeometry(width: screen[0], height: screen[1], offsetX: screen[2], offsetY: screen[3])
         lastAngular = (frameID, time, frame, geometry)
-        guard let calibration = externalCalibration, let bounds = externalBounds,
-              bounds == CGDisplayBounds(CGMainDisplayID()), let output = calibration.project(frame) else {
-            externalPoint = nil; projectionStatus = "射线交点：不可用或尚未校准"; updateSemantic(nil, time: time); return
+        guard let calibration = externalCalibration, let bounds = externalBounds else {
+            externalPoint = nil; projectionStatus = "射线交点：尚未校准"; updateSemantic(nil, time: time, reason: "CNN 角度未校准"); return
+        }
+        guard bounds == CGDisplayBounds(CGMainDisplayID()) else {
+            externalPoint = nil; projectionStatus = "射线交点：屏幕变化"; updateSemantic(nil, time: time, reason: "屏幕变化，需重新校准"); return
+        }
+        guard let output = calibration.project(frame) else {
+            externalPoint = nil; projectionStatus = "射线交点：不可用"; updateSemantic(nil, time: time, reason: "校准射线无效"); return
         }
         projectionStatus = String(format: "射线交点（未截断）X %.2f  Y %.2f", output.x, output.y)
         // Do not paint an off-screen or invalid intersection as a screen-edge hit.
         guard (0...1).contains(output.x), (0...1).contains(output.y) else {
-            externalPoint = nil; projectionStatus += "（屏幕外）"; externalStabilizer.reset(); updateSemantic(nil, time: time); return
+            externalPoint = nil; projectionStatus += "（屏幕外）"; externalStabilizer.reset(); updateSemantic(nil, time: time, reason: String(format: "射线在屏幕外 X %.2f Y %.2f", output.x, output.y)); return
         }
         externalPoint = externalStabilizer.update(output, timestamp: time)
-        let screenPoint = CGPoint(x: bounds.minX + output.x * bounds.width, y: bounds.minY + output.y * bounds.height)
+        guard let smoothed = externalPoint else { updateSemantic(nil, time: time); return }
+        let screenPoint = CGPoint(x: bounds.minX + smoothed.x * bounds.width, y: bounds.minY + smoothed.y * bounds.height)
         updateSemantic(screenPoint, time: time)
     }
-    private func updateSemantic(_ point: CGPoint?, time: TimeInterval) {
-        guard AccessibilityTargetResolver.shared.isEnabled else { semanticFixation.reset(); semanticInputStatus = "OFF"; return }
-        let state = semanticFixation.updateSemantic(point: point, timestamp: time)
-        switch state {
-        case .unavailable: semanticInputStatus = "CNN 预测不可用或位于屏幕外"
-        case .candidate(let p): semanticInputStatus = String(format: "候选注视 %.0f, %.0f", p.x, p.y)
-        case .focused(let p): semanticInputStatus = String(format: "稳定注视 %.0f, %.0f", p.x, p.y)
-        }
-        AccessibilityTargetResolver.shared.update(state, timestamp: time)
+    private func updateSemantic(_ point: CGPoint?, time: TimeInterval, reason: String? = nil) {
+        guard AccessibilityTargetResolver.shared.isEnabled else { semanticInputStatus = "OFF"; return }
+        if let point { semanticInputStatus = String(format: "平滑注视 %.0f, %.0f", point.x, point.y) }
+        else { semanticInputStatus = reason ?? "等待有效 CNN 帧" }
+        AccessibilityTargetResolver.shared.update(point, timestamp: time)
     }
     func expireExternal() { externalPoint = nil; lastExternal = nil; lastAngular = nil; externalStabilizer.reset(); updateSemantic(nil, time: CACurrentMediaTime()) }
     func beginExternal() {
@@ -108,6 +115,7 @@ final class GazeDebugController: ObservableObject {
     private var calibratedMirroring: Bool?
     private var calibratedBounds: CGRect?
     private var window: NSWindow?
+    private let windowDelegate = GazeCalibrationWindowDelegate()
     var lastFace: FaceSample?
 
     func receive(_ face: FaceSample?) {
@@ -160,6 +168,8 @@ final class GazeDebugController: ObservableObject {
         if let existing = window { existing.makeKeyAndOrderFront(nil); return }
         let panel = NSWindow(contentRect: screen.frame, styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false, screen: screen)
         panel.isReleasedWhenClosed = false
+        windowDelegate.onClose = { [weak self] in self?.close() }
+        panel.delegate = windowDelegate
         panel.level = .statusBar
         panel.backgroundColor = .black
         panel.titleVisibility = .hidden

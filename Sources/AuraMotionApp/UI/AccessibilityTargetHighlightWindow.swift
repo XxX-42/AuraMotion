@@ -26,16 +26,17 @@ final class AccessibilityTargetHighlightWindow {
                                  y: screen.frame.maxY - (expanded.maxY - quartz.minY),
                                  width: expanded.width, height: expanded.height)
         view.visual = NSRect(x: frame.minX-expanded.minX, y: expanded.maxY-frame.maxY, width: frame.width, height: frame.height)
-        view.locked = state == "locked"; view.needsDisplay = true
+        view.locked = state == "locked"; view.candidate = state.hasPrefix("candidate"); view.needsDisplay = true
         panel.setFrame(appKitFrame, display: true); panel.orderFrontRegardless()
     }
 }
 private final class HighlightView: NSView {
     var visual = NSRect.zero
     var locked = false
+    var candidate = false
     override func accessibilityIsIgnored() -> Bool { true }
     override func draw(_ dirtyRect: NSRect) {
-        let color = locked ? NSColor.systemYellow : NSColor.systemCyan
+        let color = candidate ? NSColor.systemYellow : NSColor.systemCyan
         color.withAlphaComponent(0.12).setFill(); NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 9, yRadius: 9).fill()
         color.withAlphaComponent(0.9).setStroke()
         let outer = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5, dy: 1.5), xRadius: 9, yRadius: 9); outer.lineWidth = 2; outer.stroke()

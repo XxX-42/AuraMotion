@@ -8,13 +8,18 @@ import QuartzCore
 public final class AccessibilityTargetResolver: @unchecked Sendable {
     public static let shared = AccessibilityTargetResolver()
     public static let notification = Notification.Name("AuraMotionSemanticTarget")
+    private struct Identity: Equatable {
+        let element: AXUIElement
+        static func == (lhs: Identity, rhs: Identity) -> Bool { CFEqual(lhs.element, rhs.element) }
+    }
     private struct Target { let element: AXUIElement; let snapshot: AccessibilityTargetSnapshot; let score: Double; let gaze: CGPoint; let time: TimeInterval }
     private let queue = DispatchQueue(label: "com.auramotion.semantic-ax", qos: .userInitiated)
     private let lock = NSLock()
     private var enabled = false, resolving = false, suspended = false, generation: UInt64 = 0
     private var excludedFrames: [CGRect] = []
     private var lastQuery: TimeInterval = 0
-    private var focus: Target?, locked: Target?
+    private var focus: Target?, locked: Target?, lastVisible: Target?
+    private var stabilizer = TargetFocusStabilizer<Identity>()
     private var contact = false, acted = false, suppressUntilRelease = false
     private let config = AccessibilityTargetScoringConfiguration()
     private let roles = Set(["AXButton", "AXLink", "AXCheckBox", "AXTextField", "AXSlider", "AXMenuItem"])
@@ -22,7 +27,7 @@ public final class AccessibilityTargetResolver: @unchecked Sendable {
     public var isEnabled: Bool { lock.lock(); defer { lock.unlock() }; return enabled }
     public var shouldConsumePinch: Bool { lock.lock(); defer { lock.unlock() }; return enabled || suppressUntilRelease }
     public func setEnabled(_ value: Bool) {
-        lock.lock(); if !value && contact { suppressUntilRelease = true }; enabled = value; generation &+= 1; focus = nil; locked = nil; if !suppressUntilRelease { contact = false }; acted = false; lock.unlock()
+        lock.lock(); if !value && contact { suppressUntilRelease = true }; enabled = value; generation &+= 1; focus = nil; locked = nil; lastVisible = nil; stabilizer.reset(); if !suppressUntilRelease { contact = false }; acted = false; lock.unlock()
         publish(nil, state: value ? (AXIsProcessTrusted() ? "等待注视" : "Permission Missing") : "OFF")
     }
     /// Exclude this app's interactive windows from system hit testing: macOS
@@ -32,21 +37,37 @@ public final class AccessibilityTargetResolver: @unchecked Sendable {
     }
     public func setSuspended(_ value: Bool) {
         lock.lock(); suspended = value; generation &+= 1
-        if value { focus = nil; locked = nil }
+        if value { focus = nil; locked = nil; lastVisible = nil; stabilizer.reset() }
         lock.unlock()
         if value { publish(nil, state: "校准窗口开启") }
     }
-    /// Candidate/unavailable immediately invalidate actionable focus; only focused gaze resolves.
-    public func update(_ fixation: FixationState, timestamp: TimeInterval) {
+    /// Resolve a fresh, smoothed gaze point before stabilizing target identity.
+    public func update(_ gazePoint: CGPoint?, timestamp: TimeInterval) {
         lock.lock()
         guard enabled && !suspended else { lock.unlock(); return }
-        guard AXIsProcessTrusted() else { focus = nil; locked = nil; lock.unlock(); publish(nil, state: "Permission Missing"); return }
-        guard case let .focused(gaze) = fixation, timestamp.isFinite,
+        guard AXIsProcessTrusted() else { focus = nil; locked = nil; lastVisible = nil; stabilizer.reset(); lock.unlock(); publish(nil, state: "Permission Missing"); return }
+        guard let gaze = gazePoint, gaze.x.isFinite, gaze.y.isFinite, timestamp.isFinite,
               CACurrentMediaTime() >= timestamp, CACurrentMediaTime() - timestamp < 0.4 else {
-            if !contact { focus = nil; generation &+= 1 }; let keep = contact ? locked : nil; let state = contact ? "locked" : "等待稳定注视"; lock.unlock(); publish(keep, state: state); return
+            if contact { let keep = locked; lock.unlock(); publish(keep, state: "locked"); return }
+            focus = nil; generation &+= 1
+            let now = CACurrentMediaTime()
+            let preserved: Target?
+            if case .candidate = stabilizer.temporarilyMissing(timestamp: now), let visible = lastVisible,
+               now >= visible.time, now - visible.time <= 0.2 { preserved = visible }
+            else { lastVisible = nil; preserved = nil }
+            lock.unlock(); publish(preserved, state: preserved == nil ? "等待有效注视" : "candidate · 短暂保留"); return
         }
-        guard !contact, !resolving, CACurrentMediaTime() - lastQuery >= 0.1 else { lock.unlock(); return }
-        resolving = true; lastQuery = CACurrentMediaTime(); let token = generation; let previous = focus; let excluded = excludedFrames; lock.unlock()
+        // Never allow a fresh pinch to use a previously focused control when
+        // the latest gaze has already left its expanded hit area.
+        var invalidated = false
+        if !contact, let current = focus, !AccessibilityTargetScorer.effectiveFrame(current.snapshot.frame, config: config).contains(gaze) {
+            focus = nil; lastVisible = nil; stabilizer.reset(); generation &+= 1; invalidated = true
+        }
+        guard !contact, !resolving, CACurrentMediaTime() - lastQuery >= 0.1 else {
+            lock.unlock(); if invalidated { publish(nil, state: "等待目标") }; return
+        }
+        resolving = true; lastQuery = CACurrentMediaTime(); let token = generation; let previous = focus ?? lastVisible; let excluded = excludedFrames; lock.unlock()
+        if invalidated { publish(nil, state: "等待目标") }
         queue.async { [self] in
             let candidates = discover(gaze: gaze, now: timestamp, previous: previous, excluded: excluded, token: token)
             lock.lock(); resolving = false
@@ -54,8 +75,23 @@ public final class AccessibilityTargetResolver: @unchecked Sendable {
             var best = candidates.max { $0.score < $1.score }
             if let previous, let old = candidates.first(where: { CFEqual($0.element, previous.element) }), let candidate = best,
                !CFEqual(candidate.element, old.element), candidate.score <= old.score + config.switchThreshold { best = old }
-            focus = best; lock.unlock()
-            publish(best, state: best == nil ? "无目标" : "focused")
+            if let best {
+                lastVisible = best
+                let state = stabilizer.update(Identity(element: best.element), timestamp: timestamp)
+                switch state { case .focused: focus = best; default: focus = nil }
+                let label: String
+                switch state { case .unavailable: label = "无目标"; case .candidate: label = "candidate"; case .focused: label = "focused" }
+                lock.unlock(); publish(best, state: label)
+            } else {
+                focus = nil
+                let kept: Target?
+                if case .candidate = stabilizer.temporarilyMissing(timestamp: timestamp), let previous,
+                   timestamp >= previous.time, timestamp - previous.time <= 0.2,
+                   AccessibilityTargetScorer.effectiveFrame(previous.snapshot.frame, config: config).contains(gaze) {
+                    kept = previous
+                } else { lastVisible = nil; kept = nil }
+                lock.unlock(); publish(kept, state: kept == nil ? "无目标" : "candidate · 短暂保留")
+            }
         }
     }
     public func beginPinch() {
@@ -66,8 +102,8 @@ public final class AccessibilityTargetResolver: @unchecked Sendable {
     }
     public func endPinch() {
         lock.lock(); guard contact else { lock.unlock(); return }
-        contact = false; locked = nil; focus = nil; acted = false; suppressUntilRelease = false; lock.unlock()
-        publish(nil, state: "等待稳定注视")
+        contact = false; locked = nil; focus = nil; lastVisible = nil; stabilizer.reset(); acted = false; suppressUntilRelease = false; lock.unlock()
+        publish(nil, state: "等待目标")
     }
     /// Called only for a confirmed pinch; semantic mode never falls back to mouse click.
     public func confirmPinch(allowed: @escaping @Sendable () -> Bool) {

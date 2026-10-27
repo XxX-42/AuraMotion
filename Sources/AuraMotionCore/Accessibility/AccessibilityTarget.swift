@@ -41,13 +41,3 @@ public enum AccessibilityTargetScorer {
             - config.centerDistanceWeight * Double(center) + priority + (current ? config.currentFocusBonus : 0)
     }
 }
-
-#if DEBUG
-public extension FixationDetector {
-    /// Reuse the existing quality/dwell gate for the debug CNN screen point.
-    mutating func updateSemantic(point: CGPoint?, timestamp: TimeInterval) -> FixationState {
-        guard let point else { return update(nil) }
-        return update(GazeEstimate(screenPoint: point, timestamp: timestamp, direction: nil, confidence: 0.5))
-    }
-}
-#endif
