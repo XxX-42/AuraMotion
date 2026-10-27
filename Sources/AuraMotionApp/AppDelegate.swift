@@ -16,6 +16,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
     private var projectionCandidate: AccessibilityTargetSnapshot?
     private var projectionCandidateState = false
     private var projectionAllowed = true
+    private var projectionVisibility = GazeProjectionVisibility()
     private var gazeProjectionObserver: NSObjectProtocol?
     private var semanticObserver: NSObjectProtocol?
     #endif
@@ -101,7 +102,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
     private func refreshGazeProjection() {
         let point = GazeProjectionLink.position(gaze: rawProjectionPoint, candidate: projectionCandidate,
                                                 hasSemanticTarget: projectionCandidateState, enabled: projectionAllowed)
-        gazeProjection.update(point)
+        let visible = projectionVisibility.update(point, enabled: projectionAllowed)
+        gazeProjection.update(visible.point, stale: visible.stale)
     }
     #endif
 

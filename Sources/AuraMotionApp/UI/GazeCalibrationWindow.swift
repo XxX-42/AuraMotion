@@ -95,14 +95,21 @@ final class GazeDebugController: ObservableObject {
             externalPoint = nil; projectionStatus = "射线交点：不可用"; updateSemantic(nil, time: time, reason: "校准射线无效"); return
         }
         projectionStatus = String(format: "射线交点（未截断）X %.2f  Y %.2f", output.x, output.y)
-        // Do not paint an off-screen or invalid intersection as a screen-edge hit.
-        guard (0...1).contains(output.x), (0...1).contains(output.y) else {
-            externalPoint = nil; projectionStatus += "（屏幕外）"; externalStabilizer.reset(); updateSemantic(nil, time: time, reason: String(format: "射线在屏幕外 X %.2f Y %.2f", output.x, output.y)); return
+        let offScreen = !(0...1).contains(output.x) || !(0...1).contains(output.y)
+        guard let bounded = GazeProjectionPlacement.clampedNormalized(output) else {
+            externalPoint = nil; externalStabilizer.reset(); updateSemantic(nil, time: time, reason: "射线无效"); return
         }
-        externalPoint = externalStabilizer.update(output, timestamp: time)
+        externalPoint = externalStabilizer.update(bounded, timestamp: time)
         guard let smoothed = externalPoint else { updateSemantic(nil, time: time); return }
         let screenPoint = CGPoint(x: bounds.minX + smoothed.x * bounds.width, y: bounds.minY + smoothed.y * bounds.height)
-        updateSemantic(screenPoint, time: time)
+        if offScreen {
+            projectionStatus += "（显示在边缘）"
+            // The visual marker is bounded; off-screen estimates cannot select
+            // or activate an unrelated accessibility control at the edge.
+            updateSemantic(nil, time: time, reason: String(format: "射线在屏幕外 X %.2f Y %.2f", output.x, output.y), displayPoint: screenPoint)
+        } else {
+            updateSemantic(screenPoint, time: time)
+        }
     }
     static let gazeProjectionNotification = Notification.Name("AuraMotionGazeProjection")
     func setProjectionEnabled(_ enabled: Bool) {
@@ -115,8 +122,8 @@ final class GazeDebugController: ObservableObject {
         if let point, !suppressed { info["point"] = point }
         NotificationCenter.default.post(name: Self.gazeProjectionNotification, object: nil, userInfo: info)
     }
-    private func updateSemantic(_ point: CGPoint?, time: TimeInterval, reason: String? = nil) {
-        publishProjection(window == nil ? point : nil)
+    private func updateSemantic(_ point: CGPoint?, time: TimeInterval, reason: String? = nil, displayPoint: CGPoint? = nil) {
+        publishProjection(window == nil ? (displayPoint ?? point) : nil)
         guard AccessibilityTargetResolver.shared.isEnabled else { semanticInputStatus = "OFF"; return }
         if let point { semanticInputStatus = String(format: "平滑注视 %.0f, %.0f", point.x, point.y) }
         else { semanticInputStatus = reason ?? "等待有效 CNN 帧" }
