@@ -49,18 +49,11 @@ public final class FloatingHUDWindow: NSPanel {
         }
         let start = resizeStartFrame ?? frame
         resizeStartFrame = start
-        // Project the drag onto the window's diagonal so width and height
-        // always change by the same factor, regardless of pointer direction.
-        let ratio = CGFloat(AppEnvironment.shared.capturePipeline.previewAspectRatio)
-        let safeRatio = ratio.isFinite && ratio > 0 ? ratio : 16.0 / 9.0
-        let delta = (-translation.width + translation.height / safeRatio) / (1 + 1 / (safeRatio * safeRatio))
         let visible = screen?.visibleFrame
-        let maximumWidth = visible.map {
-            max(220, min(start.maxX - $0.minX,
-                         start.width + (start.maxY - $0.minY - start.height) * safeRatio))
-        } ?? CGFloat.greatestFiniteMagnitude
-        let width = min(maximumWidth, max(220, start.width + delta))
-        let height = max(200, start.height + (width - start.width) / safeRatio)
+        let maximumWidth = visible.map { max(220, start.maxX - $0.minX) } ?? CGFloat.greatestFiniteMagnitude
+        let maximumHeight = visible.map { max(200, start.maxY - $0.minY) } ?? CGFloat.greatestFiniteMagnitude
+        let width = min(maximumWidth, max(220, start.width - translation.width))
+        let height = min(maximumHeight, max(200, start.height + translation.height))
         setFrame(NSRect(x: start.maxX - width, y: start.maxY - height, width: width, height: height), display: true)
     }
 

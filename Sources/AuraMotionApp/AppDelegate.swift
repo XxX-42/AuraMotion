@@ -122,6 +122,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
+        #if DEBUG
+        HeadSonarDebugController.shared.stopSonar()
+        #endif
         hudWindow?.saveHUDSize()
         AppEnvironment.shared.stop()
     }

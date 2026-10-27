@@ -22,6 +22,8 @@
     <true/>
     <key>NSCameraUsageDescription</key>
     <string>AuraMotion requires access to your camera to detect hand gestures for on-screen cursor navigation and system controls. All processing is strictly performed on-device in real-time, and video is never stored or uploaded.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>AuraMotion uses the microphone for the optional experimental acoustic distance test.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

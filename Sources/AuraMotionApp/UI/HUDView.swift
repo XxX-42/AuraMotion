@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import QuartzCore
 import AuraMotionCore
 
 public struct HUDView: View {
@@ -7,6 +8,8 @@ public struct HUDView: View {
     @State private var snapshot: HUDSnapshot?
     #if DEBUG
     @ObservedObject private var gazeController = GazeDebugController.shared
+    @ObservedObject private var headSonar = HeadSonarDebugController.shared
+    @State private var showEyeDiagnostics = false
     @State private var showAuraMotion = true
     @State private var showMediaPipe = true
     @State private var showExternalGaze = true
@@ -46,6 +49,7 @@ public struct HUDView: View {
     }
 
     public var body: some View {
+        ScrollView(.vertical) {
         VStack(spacing: 8) {
             // Header Bar
             HStack {
@@ -112,6 +116,18 @@ public struct HUDView: View {
             .padding(.horizontal, 10)
 
             #if DEBUG
+            HStack(spacing: 8) {
+                Button(headSonar.headEnabled ? "头部交点 · 开" : "头部交点 · 关") { headSonar.toggleHead() }
+                Button(headSonar.sonarEnabled ? "停止声呐" : "启动声呐") { headSonar.toggleSonar() }
+                Spacer()
+            }.buttonStyle(.bordered).controlSize(.small).padding(.horizontal, 10)
+            if headSonar.headEnabled || headSonar.sonarStatus != "声呐：关闭" {
+                VStack(alignment: .leading, spacing: 3) {
+                    if headSonar.headEnabled { Text(headSonar.headStatus) }
+                    if headSonar.sonarStatus != "声呐：关闭" { Text(headSonar.sonarStatus) }
+                }.font(.system(size: 11)).foregroundColor(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10)
+            }
             HStack(spacing: 6) {
                 Button { showAuraMotion.toggle() } label: {
                     Text("AuraMotion · Hand")
@@ -319,7 +335,7 @@ public struct HUDView: View {
                 .layoutPriority(1)
 
                 #if DEBUG
-                if showExternalGaze {
+                if showExternalGaze && showEyeDiagnostics {
                     HStack(spacing: 8) {
                         if let left = externalLeft {
                             VStack(spacing: 2) {
@@ -336,6 +352,10 @@ public struct HUDView: View {
                         Text(externalGazeStatus).font(.system(size: 11)).foregroundColor(.white.opacity(0.8))
                         Spacer(minLength: 0)
                     }.padding(.horizontal, 10)
+                }
+                if showExternalGaze {
+                    Button(showEyeDiagnostics ? "隐藏眼部诊断" : "显示眼部诊断") { showEyeDiagnostics.toggle() }
+                        .buttonStyle(.plain).font(.system(size: 10)).foregroundColor(.white.opacity(0.65))
                 }
                 #endif
                 #if DEBUG
@@ -381,6 +401,7 @@ public struct HUDView: View {
                 .padding(.leading, 18)
                 .padding(.bottom, 8)
             }
+        }
         }
         .frame(minWidth: 220, maxWidth: .infinity, minHeight: 200, maxHeight: .infinity)
         .background(
@@ -451,6 +472,7 @@ public struct HUDView: View {
         .onReceive(NotificationCenter.default.publisher(for: FaceInferenceWorker.notification)) { note in
             guard showMediaPipe else { return }
             faceSample = note.userInfo?["sample"] as? FaceSample
+            headSonar.updateFace(faceSample)
             GazeDebugController.shared.receive(faceSample)
             faceStatus = note.userInfo?["status"] as? String ?? "Unavailable"
             faceFPS = note.userInfo?["fps"] as? Double
@@ -464,6 +486,7 @@ public struct HUDView: View {
                 GazeDebugController.shared.expireExternal()
             }
             GazeDebugController.shared.clearIfStale()
+            if let face = faceSample, CACurrentMediaTime() - face.timestamp > 0.5 { headSonar.updateFace(nil) }
         }
         #endif
         .onChange(of: skeletonScale) { _, newValue in
