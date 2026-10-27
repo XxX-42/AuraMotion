@@ -125,6 +125,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
         #if DEBUG
         HeadSonarDebugController.shared.stopSonar()
         #endif
+        AirPodsMotionController.shared.stop()
         hudWindow?.saveHUDSize()
         AppEnvironment.shared.stop()
     }

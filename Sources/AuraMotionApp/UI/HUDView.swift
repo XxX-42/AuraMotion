@@ -3,9 +3,11 @@ import AVFoundation
 import QuartzCore
 import AuraMotionCore
 
+
 public struct HUDView: View {
     @ObservedObject private var localization = AppLocalization.shared
     @State private var snapshot: HUDSnapshot?
+    @ObservedObject private var airPods = AirPodsMotionController.shared
     #if DEBUG
     @ObservedObject private var gazeController = GazeDebugController.shared
     @ObservedObject private var headSonar = HeadSonarDebugController.shared
@@ -27,6 +29,7 @@ public struct HUDView: View {
     @State private var faceFPS: Double?
     @State private var faceLastUpdate: Date?
     @State private var fpsClock = Date()
+
     #endif
     @State private var isCompact = false
     @State private var showJointNumbers = AppEnvironment.shared.currentSettings.hudShowsJointNumbers
@@ -114,6 +117,26 @@ public struct HUDView: View {
                 }
             }
             .padding(.horizontal, 10)
+
+            HStack(spacing: 8) {
+                Button(airPods.enabled ? "停止 AirPods" : "AirPods 实时姿态") { airPods.toggle() }
+                if airPods.enabled {
+                    Button("中心归零") { airPods.recenter() }.disabled(airPods.sample == nil)
+                }
+                Spacer()
+            }.buttonStyle(.bordered).controlSize(.small).padding(.horizontal, 10)
+            if airPods.enabled {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(airPods.status).foregroundColor(.mint)
+                    Text(airPods.fps.map { String(format: "AirPods 回调：%.1f FPS", $0) } ?? "AirPods 回调：等待采样").foregroundColor(.white.opacity(0.75))
+                    if let sample = airPods.sample {
+                        Text(String(format: "timestamp: %.6f", sample.timestamp))
+                        Text(String(format: "q x %+.6f  y %+.6f\n  z %+.6f  w %+.6f", sample.x, sample.y, sample.z, sample.w))
+                        Text(String(format: "yaw %+.6f  pitch %+.6f\nroll %+.6f rad", sample.yaw, sample.pitch, sample.roll))
+                    }
+                }.font(.system(size: 11, design: .monospaced)).foregroundColor(.white.opacity(0.85))
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10)
+            }
 
             #if DEBUG
             HStack(spacing: 8) {

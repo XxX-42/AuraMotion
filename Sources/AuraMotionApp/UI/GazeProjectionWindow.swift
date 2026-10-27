@@ -1,4 +1,3 @@
-#if DEBUG
 import AppKit
 import AuraMotionCore
 
@@ -23,7 +22,7 @@ final class GazeProjectionWindow {
             panel.orderOut(nil); return
         }
         projectionView.stale = stale; projectionView.needsDisplay = true
-        panel.setFrame(frame, display: true); panel.orderFrontRegardless()
+        panel.setFrame(frame, display: true); if !panel.isVisible { panel.orderFrontRegardless() }
     }
 }
 private final class ProjectionView: NSView {
@@ -39,4 +38,3 @@ private final class ProjectionView: NSView {
         NSColor.white.withAlphaComponent(stale ? 0.4 : 1).setStroke(); cross.lineWidth = 2; cross.stroke()
     }
 }
-#endif
