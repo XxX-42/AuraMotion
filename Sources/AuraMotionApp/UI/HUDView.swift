@@ -9,6 +9,12 @@ public struct HUDView: View {
     @ObservedObject private var gazeController = GazeDebugController.shared
     @State private var showAuraMotion = true
     @State private var showMediaPipe = true
+    @State private var showExternalGaze = false
+    @State private var externalGazeStatus = "未开启"
+    @State private var externalLeft: NSImage?
+    @State private var externalRight: NSImage?
+    @State private var externalLastUpdate: Date?
+    @State private var externalFPS: Double?
     @State private var faceSample: FaceSample?
     @State private var faceStatus = "Starting"
     @State private var showCamera = false
@@ -125,6 +131,23 @@ public struct HUDView: View {
             }.padding(.horizontal, 6)
             #endif
 
+            #if DEBUG
+            HStack {
+                Button {
+                    showExternalGaze.toggle()
+                    ExperimentalGazeEstimationWorker.shared.setEnabled(showExternalGaze)
+                    externalGazeStatus = showExternalGaze ? "启动中" : "未开启"
+                    externalLeft = nil; externalRight = nil; externalLastUpdate = nil; externalFPS = nil
+                } label: {
+                    Text("GazeEstimation · Mac")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .foregroundColor(showExternalGaze ? .green : .white.opacity(0.65))
+                        .background(Color.white.opacity(showExternalGaze ? 0.16 : 0.07), in: Capsule())
+                }.buttonStyle(.plain).accessibilityValue(showExternalGaze ? "On" : "Off")
+                Spacer()
+            }.padding(.horizontal, 10)
+            #endif
             HStack {
                 Button { AppEnvironment.shared.toggleGestureClickAndMenu() } label: {
                     Text(L10n.tr("Gesture Click & Menu"))
@@ -267,6 +290,26 @@ public struct HUDView: View {
                 .layoutPriority(1)
 
                 #if DEBUG
+                if showExternalGaze {
+                    HStack(spacing: 8) {
+                        if let left = externalLeft {
+                            VStack(spacing: 2) {
+                                Text("图像左眼").font(.system(size: 9)).foregroundColor(.white.opacity(0.7))
+                                Image(nsImage: left).resizable().interpolation(.none).frame(width: 120, height: 72)
+                            }
+                        }
+                        if let right = externalRight {
+                            VStack(spacing: 2) {
+                                Text("图像右眼").font(.system(size: 9)).foregroundColor(.white.opacity(0.7))
+                                Image(nsImage: right).resizable().interpolation(.none).frame(width: 120, height: 72)
+                            }
+                        }
+                        Text(externalGazeStatus).font(.system(size: 11)).foregroundColor(.white.opacity(0.8))
+                        Spacer(minLength: 0)
+                    }.padding(.horizontal, 10)
+                }
+                #endif
+                #if DEBUG
                 if cameraPreviewEnabled && showMediaPipe {
                     Text(spatialDiagnosticsLabel)
                         .font(.system(size: 10, design: .monospaced))
@@ -336,6 +379,26 @@ public struct HUDView: View {
             }
         }
         #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: ExperimentalGazeEstimationWorker.notification)) { note in
+            guard showExternalGaze else { return }
+            let status = note.userInfo?["status"] as? String ?? "Unavailable"
+            let modelLoaded = note.userInfo?["modelLoaded"] as? Bool ?? false
+            func image(_ key: String) -> NSImage? {
+                guard let encoded = note.userInfo?[key] as? String, let data = Data(base64Encoded: encoded) else { return nil }
+                return NSImage(data: data)
+            }
+            externalLeft = image("leftPatch"); externalRight = image("rightPatch")
+            externalFPS = note.userInfo?["fps"] as? Double
+            externalLastUpdate = Date()
+            let fps = externalFPS.map { String(format: " %.1f FPS", $0) } ?? ""
+            if status == "preview" { externalGazeStatus = modelLoaded ? "眼部预览，模型已加载" + fps : "眼部预览，缺少训练权重" + fps }
+            else if status == "uncalibrated_gaze", let gaze = note.userInfo?["gaze"] as? [Double], gaze.count == 2 {
+                externalGazeStatus = String(format: "未校准预测 %.2f, %.2f%@", gaze[0], gaze[1], fps)
+            } else if status == "no_face" { externalGazeStatus = "未检测到有效双眼" + fps }
+            else if status == "normalization_failed" { externalGazeStatus = "眼部归一化不可用" + fps }
+            else if status == "Unavailable" { externalGazeStatus = "不可用：请查看调试日志" }
+            else { externalGazeStatus = status + fps }
+        }
         .onReceive(NotificationCenter.default.publisher(for: FaceInferenceWorker.notification)) { note in
             guard showMediaPipe else { return }
             faceSample = note.userInfo?["sample"] as? FaceSample
@@ -346,6 +409,10 @@ public struct HUDView: View {
         }
         .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { now in
             fpsClock = now
+            if showExternalGaze, let last = externalLastUpdate, now.timeIntervalSince(last) > 2 {
+                externalLeft = nil; externalRight = nil; externalFPS = nil
+                externalGazeStatus = "等待新画面"
+            }
             GazeDebugController.shared.clearIfStale()
         }
         #endif

@@ -3,6 +3,18 @@ import simd
 @testable import AuraMotionCore
 
 final class GazePipelineTests: XCTestCase {
+    func testCNNRawCoordinatesCanBeCalibratedSeparately() throws {
+        let samples = GazeCalibration.nineTargets.map { target in
+            let x = Double(target.x) * 1.3 - 0.7, y = Double(target.y) * 1.1 - 0.4
+            return GazeCalibrationPoint(features: EyeFeatures([x,y,x,y,0,0,0,0]), target: target)
+        }
+        let model = try GazeCalibration.fit(samples)
+        for sample in samples {
+            let prediction = try XCTUnwrap(GazeEstimator.normalizedComponents(features: sample.features, calibration: model, mode: .irisDominant))
+            XCTAssertEqual(prediction.final.x, sample.target.x, accuracy: 0.08)
+            XCTAssertEqual(prediction.final.y, sample.target.y, accuracy: 0.08)
+        }
+    }
     private func face(time: Double = 1, closed: Bool = false, irisX: Float = 0.5, irisY: Float = 0.5, yaw: Float = 0, pitch: Float = 0, roll: Float = 0, faceScale: Float = 0.5) -> FaceSample {
         var p = Array(repeating: FaceLandmark(x: 0.5, y: 0.5, z: 0), count: 478)
         func set(_ i: Int, _ x: Float, _ y: Float) { p[i] = FaceLandmark(x: x, y: y, z: 0) }

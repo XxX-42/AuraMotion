@@ -11,6 +11,7 @@ public final class FaceInferenceWorker: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.auramotion.debug.face", qos: .utility)
     private let lock = NSLock()
     private var enabled = false
+    private var benchmarkEnabled = false
     private var busy = false
     private var generation = 0
     private var lastFrame = 0.0
@@ -39,6 +40,14 @@ public final class FaceInferenceWorker: @unchecked Sendable {
         }
     }
 
+    /// A/B mode runs both resolutions on the same camera frame. Opt-in only.
+    public func setIrisBenchmarkEnabled(_ value: Bool) {
+        lock.lock()
+        benchmarkEnabled = value
+        generation += 1
+        lock.unlock()
+    }
+
     /// Discard an old capture epoch without changing the user's enabled setting.
     public func invalidate() {
         lock.lock()
@@ -57,6 +66,7 @@ public final class FaceInferenceWorker: @unchecked Sendable {
         busy = true
         lastFrame = now
         let token = generation
+        let isBenchmark = benchmarkEnabled
         lock.unlock()
         queue.async { [self] in
             defer { lock.lock(); busy = false; lock.unlock() }
@@ -65,22 +75,24 @@ public final class FaceInferenceWorker: @unchecked Sendable {
             do {
                 try startIfNeeded()
                 let image = CIImage(cvPixelBuffer: buffer)
-                let scale = min(1, 320 / max(image.extent.width, image.extent.height))
+                let scale = min(1, (isBenchmark ? 640 : 320) / max(image.extent.width, image.extent.height))
                 let width = max(1, Int((image.extent.width * scale).rounded(.down)))
                 let height = max(1, Int((image.extent.height * scale).rounded(.down)))
                 let resized = image.transformed(by: CGAffineTransform(scaleX: CGFloat(width) / image.extent.width, y: CGFloat(height) / image.extent.height))
-                var data = Data(count: 24 + width * height * 4)
+                var data = Data(count: 28 + width * height * 4)
                 data.withUnsafeMutableBytes { raw in
                     guard let base = raw.baseAddress else { return }
                     var id = carrier.frameID.bigEndian
                     var timestamp = carrier.hostPresentationTime.bitPattern.bigEndian
                     var w = UInt32(width).bigEndian
                     var h = UInt32(height).bigEndian
+                    var flags = UInt32(isBenchmark ? 1 : 0).bigEndian
                     memcpy(base, &id, 8)
                     memcpy(base.advanced(by: 8), &timestamp, 8)
                     memcpy(base.advanced(by: 16), &w, 4)
                     memcpy(base.advanced(by: 20), &h, 4)
-                    context.render(resized, toBitmap: base.advanced(by: 24), rowBytes: width * 4,
+                    memcpy(base.advanced(by: 24), &flags, 4)
+                    context.render(resized, toBitmap: base.advanced(by: 28), rowBytes: width * 4,
                                    bounds: CGRect(x: 0, y: 0, width: width, height: height),
                                    format: .BGRA8, colorSpace: CGColorSpaceCreateDeviceRGB())
                 }
@@ -102,13 +114,23 @@ public final class FaceInferenceWorker: @unchecked Sendable {
                         break
                     }
                     result.append(contentsOf: bytes)
-                    if result.count > 100_000 { throw FaceError.failed }
+                    if result.count > 200_000 { throw FaceError.failed }
                 }
                 let response = try JSONDecoder().decode(FaceWorkerResponse.self, from: result)
                 let sample = try response.sample(expectedFrameID: carrier.frameID,
                                                  expectedHostTime: carrier.hostPresentationTime,
                                                  isEstimated: carrier.isEstimatedTime,
                                                  isMirrored: isMirrored)
+                var benchmarkFrame: IrisBenchmarkFrame?
+                if isBenchmark {
+                    let extra = try JSONDecoder().decode(BenchmarkEnvelope.self, from: result)
+                    let large = try extra.benchmark640.sample(expectedFrameID: carrier.frameID, expectedHostTime: carrier.hostPresentationTime,
+                                                              isEstimated: carrier.isEstimatedTime, isMirrored: isMirrored)
+                    benchmarkFrame = IrisBenchmarkFrame(frameID: carrier.frameID, timestamp: carrier.hostPresentationTime,
+                                                        small: sample, large: large, ms320: extra.benchmarkTiming.ms320,
+                                                        ms640: extra.benchmarkTiming.ms640, width: extra.benchmarkTiming.width,
+                                                        height: extra.benchmarkTiming.height)
+                }
                 lock.lock()
                 let stillEnabled = enabled && generation == token
                 if stillEnabled { latestSampleStorage = sample }
@@ -119,7 +141,7 @@ public final class FaceInferenceWorker: @unchecked Sendable {
                     resultTimes.removeAll { now - $0 > 2 }
                     let fps: Double? = resultTimes.count >= 2 && now > resultTimes[0]
                         ? Double(resultTimes.count - 1) / (now - resultTimes[0]) : nil
-                    publish(sample, status: sample == nil ? "No face" : "Active", fps: fps)
+                    publish(sample, status: sample == nil ? "No face" : "Active", fps: fps, benchmark: benchmarkFrame)
                 }
             } catch {
                 stop()
@@ -148,6 +170,11 @@ public final class FaceInferenceWorker: @unchecked Sendable {
                 else { throw FaceError.failed }
             }
         }
+    }
+    private struct BenchmarkEnvelope: Decodable {
+        struct Timing: Decodable { let ms320: Double; let ms640: Double; let width: Int; let height: Int }
+        let benchmark640: FaceWorkerResponse
+        let benchmarkTiming: Timing
     }
     private enum FaceError: Error { case failed }
     private func startIfNeeded() throws {
@@ -181,11 +208,12 @@ public final class FaceInferenceWorker: @unchecked Sendable {
         if let process, process.isRunning { process.terminate() }
         input = nil; output = nil; process = nil
     }
-    private func publish(_ sample: FaceSample?, status: String, fps: Double? = nil) {
+    private func publish(_ sample: FaceSample?, status: String, fps: Double? = nil, benchmark: IrisBenchmarkFrame? = nil) {
         DispatchQueue.main.async {
             var info: [String: Any] = ["status": status]
             if let sample { info["sample"] = sample }
             if let fps { info["fps"] = fps }
+            if let benchmark { info["irisBenchmark"] = benchmark }
             NotificationCenter.default.post(name: Self.notification, object: nil, userInfo: info)
         }
     }

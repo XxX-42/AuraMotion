@@ -307,6 +307,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
             self.capturePipeline.stop()
             #if DEBUG
             FaceInferenceWorker.shared.setEnabled(false)
+            ExperimentalGazeEstimationWorker.shared.setEnabled(false)
             #endif
             self.inputArbitrator.stop()
             _ = self.experimentMetricsRecorder.stop()
@@ -651,6 +652,7 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     public func capturePipeline(_ pipeline: CapturePipeline, didOutput carrier: SampleCarrier) {
         #if DEBUG
         FaceInferenceWorker.shared.submit(carrier, isMirrored: pipeline.isVideoDataMirrored)
+        ExperimentalGazeEstimationWorker.shared.submit(carrier)
         #endif
         performanceTracker.recordCaptureFrame(
             timestamp: carrier.hostPresentationTime,
