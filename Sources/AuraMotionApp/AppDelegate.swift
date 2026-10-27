@@ -9,8 +9,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
     private let commandMenuWindow = CommandMenuWindowController()
     private let clickFeedback = ClickFeedbackWindowController()
     private var lastFeedbackID: UInt64 = 0
+    #if DEBUG
+    private let semanticHighlight = AccessibilityTargetHighlightWindow()
+    private var semanticObserver: NSObjectProtocol?
+    #endif
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        semanticObserver = NotificationCenter.default.addObserver(forName: AccessibilityTargetResolver.notification, object: nil, queue: .main) { [weak self] note in
+            let target = note.userInfo?["target"] as? AccessibilityTargetSnapshot
+            let state = note.userInfo?["state"] as? String ?? ""
+            MainActor.assumeIsolated { self?.semanticHighlight.update(target, state: state) }
+        }
+        #endif
         // 1. Create Floating HUD Panel
         let screenRect = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let savedWidth = UserDefaults.standard.double(forKey: "hudWindowWidth")

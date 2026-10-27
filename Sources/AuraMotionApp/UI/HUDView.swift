@@ -10,6 +10,8 @@ public struct HUDView: View {
     @State private var showAuraMotion = true
     @State private var showMediaPipe = true
     @State private var showExternalGaze = false
+    @State private var semanticEnabled = false
+    @State private var semanticStatus = "OFF"
     @State private var externalGazeStatus = "未开启"
     @State private var externalLeft: NSImage?
     @State private var externalRight: NSImage?
@@ -138,6 +140,7 @@ public struct HUDView: View {
                     ExperimentalGazeEstimationWorker.shared.setEnabled(showExternalGaze)
                     externalGazeStatus = showExternalGaze ? "启动中" : "未开启"
                     externalLeft = nil; externalRight = nil; externalLastUpdate = nil; externalFPS = nil
+                    if !showExternalGaze { GazeDebugController.shared.expireExternal() }
                 } label: {
                     Text("GazeEstimation · Mac")
                         .font(.system(size: 11, weight: .semibold))
@@ -145,8 +148,22 @@ public struct HUDView: View {
                         .foregroundColor(showExternalGaze ? .green : .white.opacity(0.65))
                         .background(Color.white.opacity(showExternalGaze ? 0.16 : 0.07), in: Capsule())
                 }.buttonStyle(.plain).accessibilityValue(showExternalGaze ? "On" : "Off")
+                Button {
+                    semanticEnabled.toggle()
+                    AccessibilityTargetResolver.shared.setEnabled(semanticEnabled)
+                } label: {
+                    Text("AX Target · \(semanticEnabled ? "ON" : "OFF")")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .foregroundColor(semanticEnabled ? .cyan : .gray)
+                        .background(Color.white.opacity(0.1), in: Capsule())
+                }.buttonStyle(.plain).accessibilityValue(semanticEnabled ? "On" : "Off")
                 Spacer()
             }.padding(.horizontal, 10)
+            if semanticEnabled {
+                Text("AX Targeting: \(semanticStatus)\n\(gazeController.semanticInputStatus)").font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.cyan).padding(.horizontal, 10).frame(maxWidth: .infinity, alignment: .leading)
+            }
             #endif
             HStack {
                 Button { AppEnvironment.shared.toggleGestureClickAndMenu() } label: {
@@ -381,6 +398,18 @@ public struct HUDView: View {
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: ExperimentalGazeEstimationWorker.notification)) { note in
             guard showExternalGaze else { return }
+            // AX point queries must never hit AuraMotion's own interactive
+            // windows. Convert their frames from AppKit to Quartz coordinates.
+            if let main = NSScreen.screens.first(where: { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == CGMainDisplayID() }) {
+                let bounds = CGDisplayBounds(CGMainDisplayID())
+                let frames = NSApp.windows.filter { $0.isVisible && !$0.ignoresMouseEvents }.map { window in
+                    let f = window.frame
+                    return CGRect(x: bounds.minX + f.minX - main.frame.minX,
+                                  y: bounds.minY + main.frame.maxY - f.maxY, width: f.width, height: f.height)
+                }
+                AccessibilityTargetResolver.shared.setExcludedFrames(frames)
+            }
+            GazeDebugController.shared.receiveExternal(note)
             let status = note.userInfo?["status"] as? String ?? "Unavailable"
             let modelLoaded = note.userInfo?["modelLoaded"] as? Bool ?? false
             func image(_ key: String) -> NSImage? {
@@ -399,6 +428,14 @@ public struct HUDView: View {
             else if status == "Unavailable" { externalGazeStatus = "不可用：请查看调试日志" }
             else { externalGazeStatus = status + fps }
         }
+        .onReceive(NotificationCenter.default.publisher(for: AccessibilityTargetResolver.notification)) { note in
+            let state = note.userInfo?["state"] as? String ?? "—"
+            if let t = note.userInfo?["target"] as? AccessibilityTargetSnapshot,
+               let gaze = note.userInfo?["gaze"] as? CGPoint, let score = note.userInfo?["score"] as? Double,
+               let distance = note.userInfo?["distance"] as? CGFloat {
+                semanticStatus = String(format: "%@ · %@ · %@\nframe %.0f %.0f %.0f %.0f  gaze %.0f %.0f  dist %.0f score %.1f  %@", state, t.role, t.title ?? "—", t.frame.minX, t.frame.minY, t.frame.width, t.frame.height, gaze.x, gaze.y, distance, score, t.supportsPress ? "AXPress" : "仅高亮")
+            } else { semanticStatus = state + " · Target: —" }
+        }
         .onReceive(NotificationCenter.default.publisher(for: FaceInferenceWorker.notification)) { note in
             guard showMediaPipe else { return }
             faceSample = note.userInfo?["sample"] as? FaceSample
@@ -409,9 +446,10 @@ public struct HUDView: View {
         }
         .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { now in
             fpsClock = now
-            if showExternalGaze, let last = externalLastUpdate, now.timeIntervalSince(last) > 2 {
+            if showExternalGaze, let last = externalLastUpdate, now.timeIntervalSince(last) > 0.5 {
                 externalLeft = nil; externalRight = nil; externalFPS = nil
                 externalGazeStatus = "等待新画面"
+                GazeDebugController.shared.expireExternal()
             }
             GazeDebugController.shared.clearIfStale()
         }

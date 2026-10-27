@@ -23,6 +23,8 @@ final class GazeDebugController: ObservableObject {
     @Published var externalStatus = "CNN：请开启 GazeEstimation · Mac 并等待模型就绪"
     private var externalCalibration: AngularGazeCalibration?
     private var externalStabilizer = DebugGazeStabilizer()
+    private var semanticFixation = FixationDetector()
+    @Published var semanticInputStatus = "等待 CNN 校准与预测"
     private var externalBounds: CGRect?
     var lastExternal: (frame: UInt64, time: TimeInterval, point: CGPoint)?
     @Published var rawAnglesText = "Raw CNN：等待有效角度"
@@ -46,23 +48,35 @@ final class GazeDebugController: ObservableObject {
               let time = note.userInfo?["hostTime"] as? Double,
               angles.allSatisfy(\.isFinite), eye.allSatisfy(\.isFinite), rotation.allSatisfy(\.isFinite), screen.allSatisfy(\.isFinite),
               CACurrentMediaTime() >= time, CACurrentMediaTime() - time < 0.5 else {
-            lastAngular = nil; lastExternal = nil; externalPoint = nil; projectionStatus = "射线交点：等待有效输入"; externalStabilizer.reset(); return
+            lastAngular = nil; lastExternal = nil; externalPoint = nil; projectionStatus = "射线交点：等待有效输入"; externalStabilizer.reset(); updateSemantic(nil, time: CACurrentMediaTime()); return
         }
         let frame = AngularGazeFrame(pitch: angles[0], yaw: angles[1], eye: SIMD3(eye[0],eye[1],eye[2]), rotation: rotation)
         let geometry = DebugScreenGeometry(width: screen[0], height: screen[1], offsetX: screen[2], offsetY: screen[3])
         lastAngular = (frameID, time, frame, geometry)
         guard let calibration = externalCalibration, let bounds = externalBounds,
               bounds == CGDisplayBounds(CGMainDisplayID()), let output = calibration.project(frame) else {
-            externalPoint = nil; projectionStatus = "射线交点：不可用或尚未校准"; return
+            externalPoint = nil; projectionStatus = "射线交点：不可用或尚未校准"; updateSemantic(nil, time: time); return
         }
         projectionStatus = String(format: "射线交点（未截断）X %.2f  Y %.2f", output.x, output.y)
         // Do not paint an off-screen or invalid intersection as a screen-edge hit.
         guard (0...1).contains(output.x), (0...1).contains(output.y) else {
-            externalPoint = nil; projectionStatus += "（屏幕外）"; externalStabilizer.reset(); return
+            externalPoint = nil; projectionStatus += "（屏幕外）"; externalStabilizer.reset(); updateSemantic(nil, time: time); return
         }
         externalPoint = externalStabilizer.update(output, timestamp: time)
+        let screenPoint = CGPoint(x: bounds.minX + output.x * bounds.width, y: bounds.minY + output.y * bounds.height)
+        updateSemantic(screenPoint, time: time)
     }
-    func expireExternal() { externalPoint = nil; lastExternal = nil; lastAngular = nil; externalStabilizer.reset() }
+    private func updateSemantic(_ point: CGPoint?, time: TimeInterval) {
+        guard AccessibilityTargetResolver.shared.isEnabled else { semanticFixation.reset(); semanticInputStatus = "OFF"; return }
+        let state = semanticFixation.updateSemantic(point: point, timestamp: time)
+        switch state {
+        case .unavailable: semanticInputStatus = "CNN 预测不可用或位于屏幕外"
+        case .candidate(let p): semanticInputStatus = String(format: "候选注视 %.0f, %.0f", p.x, p.y)
+        case .focused(let p): semanticInputStatus = String(format: "稳定注视 %.0f, %.0f", p.x, p.y)
+        }
+        AccessibilityTargetResolver.shared.update(state, timestamp: time)
+    }
+    func expireExternal() { externalPoint = nil; lastExternal = nil; lastAngular = nil; externalStabilizer.reset(); updateSemantic(nil, time: CACurrentMediaTime()) }
     func beginExternal() {
         externalCalibration = nil; externalPoint = nil; angularRowReport = ""; externalStabilizer.reset(); externalStatus = "CNN 角度九点校准中"
     }
@@ -135,6 +149,12 @@ final class GazeDebugController: ObservableObject {
         calibration = model; status = "校准完成，点击目标检查预测"
     }
     func show() {
+        AccessibilityTargetResolver.shared.setSuspended(true)
+        // Let an already-running, bounded AX hit test return before the
+        // full-screen SwiftUI window becomes visible to the AX server.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.showAfterAXPause() }
+    }
+    private func showAfterAXPause() {
         let mainID = CGMainDisplayID()
         guard let screen = NSScreen.screens.first(where: { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == mainID }) ?? NSScreen.main else { return }
         if let existing = window { existing.makeKeyAndOrderFront(nil); return }
@@ -149,7 +169,7 @@ final class GazeDebugController: ObservableObject {
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    private func close() { window?.orderOut(nil); window = nil }
+    private func close() { window?.orderOut(nil); window = nil; AccessibilityTargetResolver.shared.setSuspended(false) }
 }
 
 private struct GazeCalibrationView: View {
@@ -256,9 +276,6 @@ private struct GazeCalibrationView: View {
             }
         }
         .onReceive(timer) { now in tick(now) }
-        .onReceive(NotificationCenter.default.publisher(for: ExperimentalGazeEstimationWorker.notification)) { note in
-            controller.receiveExternal(note)
-        }
         .onReceive(NotificationCenter.default.publisher(for: FaceInferenceWorker.notification)) { note in
             guard active, runningBenchmark, let frame = note.userInfo?["irisBenchmark"] as? IrisBenchmarkFrame,
                   frame.timestamp >= benchmarkTargetHostTime + 0.7 else { return }

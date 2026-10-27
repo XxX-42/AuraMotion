@@ -742,6 +742,11 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
                 isInjectionAllowed: canInject
             )
 
+            #if DEBUG
+            if AccessibilityTargetResolver.shared.shouldConsumePinch && !self.stateMachine.pinchDetector.isContactActive {
+                AccessibilityTargetResolver.shared.endPinch()
+            }
+            #endif
             self.recordExperimentFrame(
                 timestamp: carrier.hostPresentationTime,
                 sample: processedSample,
@@ -757,6 +762,10 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     // MARK: - GestureStateMachineDelegate
 
     public func stateMachine(_ fsm: GestureStateMachine, didTransitionTo state: GestureState) {
+        #if DEBUG
+        if state == .pinchArmed && AccessibilityTargetResolver.shared.isEnabled { AccessibilityTargetResolver.shared.beginPinch() }
+        if [.paused, .trackingLost].contains(state) && AccessibilityTargetResolver.shared.isEnabled { AccessibilityTargetResolver.shared.endPinch() }
+        #endif
         let visibleCursor = visibleCursorLocation(fallback: latestCursorLocation)
         cursorController.setInteractionState(state, currentCursor: visibleCursor)
         if currentSettings.cursorExperiment.hasCursorExperiments && state != .pointer && state != .dragging {
@@ -772,6 +781,16 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     }
 
     public func stateMachine(_ fsm: GestureStateMachine, emitClickAt anchor: CGPoint, epoch: UInt64) {
+        #if DEBUG
+        if AccessibilityTargetResolver.shared.shouldConsumePinch {
+            let gate = gestureActionGate()
+            AccessibilityTargetResolver.shared.confirmPinch { [weak self] in
+                guard let self else { return false }
+                return gate() && self.permissionsManager.gate.canInject && self.inputArbitrator.isInjectionEnabled() && self.inputArbitrator.currentEpoch() == epoch
+            }
+            return
+        }
+        #endif
         clickFeedbackID &+= 1
         clickFeedbackLocation = currentSettings.showClickFeedback ? anchor : nil
         recognize("Click recognized")
@@ -779,15 +798,24 @@ public final class AppEnvironment: CapturePipelineDelegate, VisionInferenceWorke
     }
 
     public func stateMachine(_ fsm: GestureStateMachine, emitDragStartAt anchor: CGPoint, epoch: UInt64) {
+        #if DEBUG
+        if AccessibilityTargetResolver.shared.shouldConsumePinch { return }
+        #endif
         outputCoordinator.enqueueDragStart(at: anchor, epoch: epoch, gate: gestureActionGate())
     }
 
     public func stateMachine(_ fsm: GestureStateMachine, emitDragMoveTo location: CGPoint, epoch: UInt64) {
+        #if DEBUG
+        if AccessibilityTargetResolver.shared.shouldConsumePinch { return }
+        #endif
         latestCursorLocation = location
         outputCoordinator.enqueueDragMove(to: location, epoch: epoch)
     }
 
     public func stateMachine(_ fsm: GestureStateMachine, emitDragEndAt location: CGPoint, epoch: UInt64) {
+        #if DEBUG
+        if AccessibilityTargetResolver.shared.shouldConsumePinch { return }
+        #endif
         outputCoordinator.enqueueDragEnd(at: location, epoch: epoch)
     }
 
