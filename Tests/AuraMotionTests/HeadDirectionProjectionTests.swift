@@ -11,10 +11,10 @@ final class HeadDirectionProjectionTests: XCTestCase {
         XCTAssertEqual(neutral, CGPoint(x: 500, y: 400))
         let yaw = try XCTUnwrap(HeadDirectionProjection.approximate(pose: pose(0.1), mirrored: false, display: screen))
         let pitch = try XCTUnwrap(HeadDirectionProjection.approximate(pose: pose(0, 0.1), mirrored: false, display: screen))
-        XCTAssertGreaterThan(yaw.x, neutral.x)
-        XCTAssertLessThan(pitch.y, neutral.y)
+        XCTAssertLessThan(yaw.x, neutral.x)
+        XCTAssertGreaterThan(pitch.y, neutral.y)
         let mirrored = try XCTUnwrap(HeadDirectionProjection.approximate(pose: pose(0.1), mirrored: true, display: screen))
-        XCTAssertLessThan(mirrored.x, neutral.x)
+        XCTAssertGreaterThan(mirrored.x, neutral.x)
     }
     func testInvalidPoseIsUnavailable() {
         XCTAssertNil(HeadDirectionProjection.approximate(pose: pose(.nan), mirrored: false, display: CGRect(x: 0, y: 0, width: 100, height: 100)))

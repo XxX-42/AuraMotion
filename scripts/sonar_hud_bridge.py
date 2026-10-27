@@ -12,7 +12,8 @@ spec = importlib.util.spec_from_file_location('acoustic_sonar', module_path)
 sonar = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sonar)
 threading.Thread(target=sonar.sense_loop, daemon=True).start()
-while True:
+parent_pid = os.getppid()
+while os.getppid() == parent_pid:
     with sonar._cache_lock:
         data = {key: sonar._cache.get(key) for key in ('distance_m', 'status', 'timestamp', 'mic_rms')}
     temp = output_path + '.tmp'

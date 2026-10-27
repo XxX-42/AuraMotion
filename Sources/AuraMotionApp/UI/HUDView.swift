@@ -121,13 +121,11 @@ public struct HUDView: View {
                 Button(headSonar.sonarEnabled ? "停止声呐" : "启动声呐") { headSonar.toggleSonar() }
                 Spacer()
             }.buttonStyle(.bordered).controlSize(.small).padding(.horizontal, 10)
-            if headSonar.headEnabled || headSonar.sonarStatus != "声呐：关闭" {
-                VStack(alignment: .leading, spacing: 3) {
-                    if headSonar.headEnabled { Text(headSonar.headStatus) }
-                    if headSonar.sonarStatus != "声呐：关闭" { Text(headSonar.sonarStatus) }
-                }.font(.system(size: 11)).foregroundColor(.orange)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10)
-            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(headSonar.sonarStatus).foregroundColor(.cyan)
+                if headSonar.headEnabled { Text(headSonar.headStatus).foregroundColor(.orange) }
+            }.font(.system(size: 11))
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10)
             HStack(spacing: 6) {
                 Button { showAuraMotion.toggle() } label: {
                     Text("AuraMotion · Hand")

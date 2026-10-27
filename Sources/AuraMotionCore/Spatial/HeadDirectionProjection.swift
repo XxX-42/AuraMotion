@@ -9,6 +9,6 @@ public enum HeadDirectionProjection {
               pose.yaw.isFinite, pose.pitch.isFinite, abs(pose.yaw) < 1.2, abs(pose.pitch) < 1.2 else { return nil }
         let horizontal = CGFloat(tan(Double(pose.yaw))) * (mirrored ? -1 : 1)
         let vertical = CGFloat(tan(Double(pose.pitch)))
-        return CGPoint(x: center.x + horizontal * display.width, y: center.y - vertical * display.height)
+        return CGPoint(x: center.x - horizontal * display.width, y: center.y + vertical * display.height)
     }
 }
