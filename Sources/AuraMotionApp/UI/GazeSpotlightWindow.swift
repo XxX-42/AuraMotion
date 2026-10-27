@@ -22,24 +22,32 @@ final class GazeSpotlightWindow {
         }), let marker = GazeProjectionPlacement.panelFrame(point: point, quartzDisplay: CGDisplayBounds(CGMainDisplayID()), appKitDisplay: screen.frame, size: 32) else {
             panel.orderOut(nil); return
         }
-        spotlightView.center = CGPoint(x: marker.midX - screen.frame.minX, y: marker.midY - screen.frame.minY)
-        if panel.frame != screen.frame { panel.setFrame(screen.frame, display: false) }
-        spotlightView.needsDisplay = true
+        let center = CGPoint(x: marker.midX - screen.frame.minX, y: marker.midY - screen.frame.minY)
+        let localScreen = CGRect(origin: .zero, size: screen.frame.size)
+        guard let quadrant = GazeSpotlightGeometry.largestOverlapQuadrant(center: center, screen: localScreen, previous: spotlightView.quadrant) else {
+            panel.orderOut(nil); return
+        }
+        let frameChanged = panel.frame != screen.frame
+        if frameChanged { panel.setFrame(screen.frame, display: false) }
+        if frameChanged || spotlightView.quadrant != quadrant {
+            spotlightView.quadrant = quadrant; spotlightView.needsDisplay = true
+        }
         if !panel.isVisible { panel.orderFrontRegardless() }
     }
 }
 private final class SpotlightView: NSView {
-    var center = CGPoint.zero
+    var quadrant: ScreenQuadrant?
     override func accessibilityIsIgnored() -> Bool { true }
     override func draw(_ dirtyRect: NSRect) {
-        guard let circle = GazeSpotlightGeometry.circle(center: center) else { return }
+        guard let quadrant else { return }
+        let highlight = GazeSpotlightGeometry.quadrantRect(quadrant, screen: bounds)
         let outside = NSBezierPath(rect: bounds)
-        outside.appendOval(in: circle)
+        outside.appendRect(highlight)
         outside.windingRule = .evenOdd
         NSColor.black.withAlphaComponent(GazeSpotlightGeometry.dimOpacity).setFill()
         outside.fill()
         NSColor.white.withAlphaComponent(GazeSpotlightGeometry.highlightOpacity).setFill()
-        NSBezierPath(ovalIn: circle).fill()
+        NSBezierPath(rect: highlight).fill()
     }
 }
 #endif

@@ -154,7 +154,7 @@ public struct HUDView: View {
                     showGazeSpotlight.toggle()
                     NotificationCenter.default.post(name: GazeSpotlightWindow.toggleNotification, object: nil, userInfo: ["enabled": showGazeSpotlight])
                 } label: {
-                    Text("眼动遮罩")
+                    Text("象限遮罩")
                         .font(.system(size: 11, weight: .semibold))
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .foregroundColor(showGazeSpotlight ? .cyan : .gray)
