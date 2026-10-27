@@ -10,6 +10,7 @@ public struct HUDView: View {
     @State private var showAuraMotion = true
     @State private var showMediaPipe = true
     @State private var showExternalGaze = true
+    @State private var showGazeSpotlight = true
     @State private var semanticEnabled = false
     @State private var semanticStatus = "OFF"
     @State private var externalGazeStatus = "启动中"
@@ -149,6 +150,16 @@ public struct HUDView: View {
                         .foregroundColor(showExternalGaze ? .green : .white.opacity(0.65))
                         .background(Color.white.opacity(showExternalGaze ? 0.16 : 0.07), in: Capsule())
                 }.buttonStyle(.plain).accessibilityValue(showExternalGaze ? "On" : "Off")
+                Button {
+                    showGazeSpotlight.toggle()
+                    NotificationCenter.default.post(name: GazeSpotlightWindow.toggleNotification, object: nil, userInfo: ["enabled": showGazeSpotlight])
+                } label: {
+                    Text("眼动遮罩")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .foregroundColor(showGazeSpotlight ? .cyan : .gray)
+                        .background(Color.white.opacity(showGazeSpotlight ? 0.16 : 0.05), in: Capsule())
+                }.buttonStyle(.plain).accessibilityValue(showGazeSpotlight ? "On" : "Off")
                 Button {
                     semanticEnabled.toggle()
                     AccessibilityTargetResolver.shared.setEnabled(semanticEnabled)

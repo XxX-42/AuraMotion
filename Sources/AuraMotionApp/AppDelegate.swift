@@ -12,6 +12,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
     #if DEBUG
     private let semanticHighlight = AccessibilityTargetHighlightWindow()
     private let gazeProjection = GazeProjectionWindow()
+    private let gazeSpotlight = GazeSpotlightWindow()
+    private var gazeSpotlightEnabled = true
+    private var gazeSpotlightObserver: NSObjectProtocol?
     private var rawProjectionPoint: CGPoint?
     private var projectionCandidate: AccessibilityTargetSnapshot?
     private var projectionCandidateState = false
@@ -23,6 +26,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
+        gazeSpotlightObserver = NotificationCenter.default.addObserver(forName: GazeSpotlightWindow.toggleNotification, object: nil, queue: .main) { [weak self] note in
+            let enabled = note.userInfo?["enabled"] as? Bool ?? false
+            MainActor.assumeIsolated { self?.gazeSpotlightEnabled = enabled; self?.refreshGazeProjection() }
+        }
         gazeProjectionObserver = NotificationCenter.default.addObserver(forName: GazeDebugController.gazeProjectionNotification, object: nil, queue: .main) { [weak self] note in
             let point = note.userInfo?["point"] as? CGPoint
             let suppressed = note.userInfo?["suppressed"] as? Bool ?? false
@@ -103,6 +110,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
         let point = GazeProjectionLink.position(gaze: rawProjectionPoint, candidate: projectionCandidate,
                                                 hasSemanticTarget: projectionCandidateState, enabled: projectionAllowed)
         let visible = projectionVisibility.update(point, enabled: projectionAllowed)
+        gazeSpotlight.update(visible.point, enabled: gazeSpotlightEnabled)
         gazeProjection.update(visible.point, stale: visible.stale)
     }
     #endif
