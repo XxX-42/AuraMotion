@@ -102,7 +102,14 @@ final class GazeDebugController: ObservableObject {
         let screenPoint = CGPoint(x: bounds.minX + smoothed.x * bounds.width, y: bounds.minY + smoothed.y * bounds.height)
         updateSemantic(screenPoint, time: time)
     }
+    static let gazeProjectionNotification = Notification.Name("AuraMotionGazeProjection")
+    private func publishProjection(_ point: CGPoint?) {
+        var info: [String: Any] = [:]
+        if let point { info["point"] = point }
+        NotificationCenter.default.post(name: Self.gazeProjectionNotification, object: nil, userInfo: info)
+    }
     private func updateSemantic(_ point: CGPoint?, time: TimeInterval, reason: String? = nil) {
+        publishProjection(window == nil ? point : nil)
         guard AccessibilityTargetResolver.shared.isEnabled else { semanticInputStatus = "OFF"; return }
         if let point { semanticInputStatus = String(format: "平滑注视 %.0f, %.0f", point.x, point.y) }
         else { semanticInputStatus = reason ?? "等待有效 CNN 帧" }
@@ -189,6 +196,7 @@ final class GazeDebugController: ObservableObject {
         calibration = model; status = "校准完成，点击目标检查预测"
     }
     func show() {
+        publishProjection(nil)
         AccessibilityTargetResolver.shared.setSuspended(true)
         // Let an already-running, bounded AX hit test return before the
         // full-screen SwiftUI window becomes visible to the AX server.

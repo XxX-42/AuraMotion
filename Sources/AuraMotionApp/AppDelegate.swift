@@ -11,11 +11,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
     private var lastFeedbackID: UInt64 = 0
     #if DEBUG
     private let semanticHighlight = AccessibilityTargetHighlightWindow()
+    private let gazeProjection = GazeProjectionWindow()
+    private var gazeProjectionObserver: NSObjectProtocol?
     private var semanticObserver: NSObjectProtocol?
     #endif
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
+        gazeProjectionObserver = NotificationCenter.default.addObserver(forName: GazeDebugController.gazeProjectionNotification, object: nil, queue: .main) { [weak self] note in
+            let point = note.userInfo?["point"] as? CGPoint
+            MainActor.assumeIsolated { self?.gazeProjection.update(point) }
+        }
         semanticObserver = NotificationCenter.default.addObserver(forName: AccessibilityTargetResolver.notification, object: nil, queue: .main) { [weak self] note in
             let target = note.userInfo?["target"] as? AccessibilityTargetSnapshot
             let state = note.userInfo?["state"] as? String ?? ""
@@ -72,6 +78,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, AppEnvironmentO
 
         // 5. Start environment
         env.start()
+        #if DEBUG
+        ExperimentalGazeEstimationWorker.shared.setEnabled(true)
+        #endif
     }
 
     public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

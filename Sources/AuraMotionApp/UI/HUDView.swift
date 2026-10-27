@@ -9,10 +9,10 @@ public struct HUDView: View {
     @ObservedObject private var gazeController = GazeDebugController.shared
     @State private var showAuraMotion = true
     @State private var showMediaPipe = true
-    @State private var showExternalGaze = false
+    @State private var showExternalGaze = true
     @State private var semanticEnabled = false
     @State private var semanticStatus = "OFF"
-    @State private var externalGazeStatus = "未开启"
+    @State private var externalGazeStatus = "启动中"
     @State private var externalLeft: NSImage?
     @State private var externalRight: NSImage?
     @State private var externalLastUpdate: Date?
